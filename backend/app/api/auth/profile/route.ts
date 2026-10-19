@@ -13,6 +13,8 @@ function publicUser(user: {
   full_name?: string | null;
   weight?: number | null;
   height?: number | null;
+  body_fat?: number | null;
+  weight_logs?: unknown;
   gender?: Gender | null;
   target_calories?: number | null;
   target_protein?: number | null;
@@ -27,6 +29,12 @@ function publicUser(user: {
     fullName: user.full_name ?? null,
     weight: user.weight ?? null,
     height: user.height ?? null,
+    bodyFat: user.body_fat ?? null,
+    weightHistory: (
+      Array.isArray(user.weight_logs) ? (user.weight_logs as Array<{ date: string; weight: number }>) : []
+    )
+      .slice(-365)
+      .map((l) => ({ date: l.date, weight: l.weight })),
     gender: user.gender ?? null,
     targetCalories: user.target_calories ?? null,
     targetProtein: user.target_protein ?? null,
@@ -66,8 +74,21 @@ export async function PATCH(req: NextRequest) {
   if (typeof body.full_name === "string") {
     user.full_name = body.full_name.trim();
   }
-  if (body.weight != null) user.weight = Number(body.weight);
+  if (body.weight != null) {
+    user.weight = Number(body.weight);
+    // Historial de peso: upsert del día natural actual.
+    const today = new Date().toISOString().slice(0, 10);
+    const logs = user.weight_logs as Array<{ date: string; weight: number }>;
+    const existing = logs.find((l) => l.date === today);
+    if (existing) {
+      existing.weight = Number(body.weight);
+    } else {
+      logs.push({ date: today, weight: Number(body.weight) });
+    }
+    if (logs.length > 365) logs.splice(0, logs.length - 365);
+  }
   if (body.height != null) user.height = Number(body.height);
+  if (body.bodyFat != null) user.body_fat = Number(body.bodyFat);
   if (
     typeof body.gender === "string" &&
     (GENDERS as readonly string[]).includes(body.gender)

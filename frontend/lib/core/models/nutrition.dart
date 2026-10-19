@@ -1,6 +1,9 @@
 /// Log diario de nutrición. Contrato del backend:
-/// GET/POST/PATCH devuelven camelCase (`quantityG`), las entradas
-/// POST/PATCH aceptan `quantity_g` (snake_case) tal como expone la API.
+/// GET/POST/PATCH devuelven camelCase, las entradas
+/// POST/PATCH aceptan snake_case en `quantity_g` tal como expone la API.
+///
+/// El agrupado es por hora del día (`time` = "HH:mm"); `meal` fue
+/// deprecado en el backend y se ignora.
 class NutritionItem {
   const NutritionItem({
     required this.id,
@@ -10,8 +13,9 @@ class NutritionItem {
     required this.protein,
     required this.carbs,
     required this.fats,
-    required this.meal,
     this.barcode,
+    this.time,
+    this.label,
     this.loggedAt,
   });
 
@@ -23,7 +27,12 @@ class NutritionItem {
   final double protein;
   final double carbs;
   final double fats;
-  final String meal;
+
+  /// Hora del registro, "HH:mm" 24h.
+  final String? time;
+
+  /// Etiqueta libre y opcional, ej. "pre-entreno".
+  final String? label;
   final String? loggedAt;
 
   factory NutritionItem.fromJson(Map<String, dynamic> json) {
@@ -36,7 +45,8 @@ class NutritionItem {
       protein: (json['protein'] as num?)?.toDouble() ?? 0,
       carbs: (json['carbs'] as num?)?.toDouble() ?? 0,
       fats: (json['fats'] as num?)?.toDouble() ?? 0,
-      meal: json['meal'] as String? ?? 'snack',
+      time: json['time'] as String?,
+      label: json['label'] as String?,
       loggedAt: json['loggedAt'] as String?,
     );
   }
@@ -50,8 +60,9 @@ class NutritionItem {
       'protein': protein,
       'carbs': carbs,
       'fats': fats,
-      'meal': meal,
       'barcode': ?barcode,
+      'time': ?time,
+      'label': ?label,
     };
     if (itemId != null) body['itemId'] = itemId;
     return body;
@@ -101,11 +112,50 @@ String nutritionToday() {
       '${now.day.toString().padLeft(2, '0')}';
 }
 
-const nutritionMeals = ['breakfast', 'lunch', 'dinner', 'snack'];
+/// Hora local actual como "HH:mm" 24h.
+String nutritionNowTime() {
+  final now = DateTime.now();
+  return '${now.hour.toString().padLeft(2, '0')}:'
+      '${now.minute.toString().padLeft(2, '0')}';
+}
 
-const nutritionMealLabels = {
-  'breakfast': 'Desayuno',
-  'lunch': 'Almuerzo',
-  'dinner': 'Cena',
-  'snack': 'Snack',
-};
+/// Hora efectiva de un ítem: `time` explícito o, en ítems legacy sin hora,
+/// la hora local de `loggedAt`.
+String effectiveTime(NutritionItem item) {
+  final explicit = item.time;
+  if (explicit != null && RegExp(r'^([01]\d|2[0-3]):[0-5]\d$').hasMatch(explicit)) {
+    return explicit;
+  }
+  final logged = DateTime.tryParse(item.loggedAt ?? '');
+  if (logged != null) {
+    return '${logged.hour.toString().padLeft(2, '0')}:'
+        '${logged.minute.toString().padLeft(2, '0')}';
+  }
+  return '00:00';
+}
+
+/// "08:30" -> "8:30 AM"; "20:00" -> "8:00 PM".
+String formatTime12h(String time24) {
+  final parts = time24.split(':');
+  final h = int.tryParse(parts.isNotEmpty ? parts[0] : '') ?? 0;
+  final m = parts.length > 1 ? int.tryParse(parts[1]) ?? 0 : 0;
+  final period = h >= 12 ? 'PM' : 'AM';
+  var hour = h % 12;
+  if (hour == 0) hour = 12;
+  final minute = m.toString().padLeft(2, '0');
+  return '$hour:$minute $period';
+}
+
+/// "8:30 PM" -> "20:30" (24h). Devuelve `null` si no se puede parsear.
+String? parseTime12h(String time12) {
+  final m = RegExp(r'^(\d{1,2}):(\d{2})\s*(AM|PM)$', caseSensitive: false)
+      .firstMatch(time12.trim());
+  if (m == null) return null;
+  var hour = int.tryParse(m.group(1)!) ?? 0;
+  final minute = int.tryParse(m.group(2)!) ?? 0;
+  final period = (m.group(3) ?? '').toUpperCase();
+  if (period == 'PM' && hour != 12) hour += 12;
+  if (period == 'AM' && hour == 12) hour = 0;
+  return '${hour.toString().padLeft(2, '0')}:'
+      '${minute.toString().padLeft(2, '0')}';
+}

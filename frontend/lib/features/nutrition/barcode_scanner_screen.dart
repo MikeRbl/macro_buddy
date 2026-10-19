@@ -1,12 +1,23 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
+import '../../core/services/open_food_facts_service.dart';
 import '../../theme/app_theme.dart';
 
+/// Resultado del escaneo: el código crudo, el producto de OpenFoodFacts
+/// (`null` si no existe) y un mensaje si la consulta a OFF falló
+/// (red/servidor) — distinto de "no existe".
+typedef BarcodeScanResult = ({String code, OffProduct? product, String? error});
+
 /// Escáner de códigos de barras a pantalla completa.
-/// Devuelve el código (`Navigator.pop(context, String)`) al detectar el
-/// primero y se cierra solo: una cámara abierta es un recurso caro.
+///
+/// Al detectar el primer código: vibra, detiene la cámara (`stop()`, un
+/// recurso caro), consulta OpenFoodFacts con un guard único
+/// (`_isProcessing`) y devuelve el resultado
+/// `Navigator.pop(context, (code, product))`.
 class BarcodeScannerScreen extends StatefulWidget {
   const BarcodeScannerScreen({super.key});
 
@@ -18,23 +29,38 @@ class _BarcodeScannerScreenState extends State<BarcodeScannerScreen> {
   final _controller = MobileScannerController(
     detectionSpeed: DetectionSpeed.noDuplicates,
   );
-  bool _completed = false;
+  bool _isProcessing = false;
 
-  void _onDetect(BarcodeCapture capture) {
-    if (_completed || !mounted) return;
+  Future<void> _onDetect(BarcodeCapture capture) async {
+    if (_isProcessing || !mounted) return;
     final code = capture.barcodes
         .map((b) => b.rawValue)
         .whereType<String>()
         .firstOrNull;
     if (code == null || code.isEmpty) return;
-    setState(() => _completed = true);
+
+    setState(() => _isProcessing = true);
     HapticFeedback.mediumImpact();
-    Navigator.of(context).pop(code);
+    // La cámara se apaga antes de la consulta: sin fotogramas extra.
+    await _controller.stop();
+
+    String? error;
+    OffProduct? product;
+    try {
+      product =
+          await OpenFoodFactsService.shared.fetchByBarcode(code);
+    } on OffException catch (e) {
+      error = e.message;
+    } catch (_) {
+      error = 'No se pudo contactar OpenFoodFacts. Revisa tu conexión.';
+    }
+    if (!mounted) return;
+    Navigator.of(context).pop((code: code, product: product, error: error));
   }
 
   @override
   void dispose() {
-    _controller.dispose();
+    unawaited(_controller.dispose());
     super.dispose();
   }
 
@@ -46,12 +72,13 @@ class _BarcodeScannerScreenState extends State<BarcodeScannerScreen> {
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         iconTheme: const IconThemeData(color: Color(0xFFFFFFFF)),
-        title: const Text('Escanear alimento',
+        title: const Text(
+          'Escanear alimento',
           style: TextStyle(
-          color: Color(0xFFFFFFFF),
-          fontSize: 17,
-          fontWeight: FontWeight.w600,
-        ),
+            color: Color(0xFFFFFFFF),
+            fontSize: 17,
+            fontWeight: FontWeight.w600,
+          ),
         ),
       ),
       body: Stack(
@@ -62,22 +89,43 @@ class _BarcodeScannerScreenState extends State<BarcodeScannerScreen> {
             onDetect: _onDetect,
             errorBuilder: (context, error) => _ErrorView(error: error),
           ),
-          Align(
-            alignment: Alignment.bottomCenter,
-            child: Padding(
-              padding: EdgeInsets.fromLTRB(
-                24,
-                0,
-                24,
-                32 + MediaQuery.paddingOf(context).bottom,
+          if (_isProcessing)
+            const ColoredBox(
+              color: Colors.black54,
+              child: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    CircularProgressIndicator(color: AppColors.secondaryCyan),
+                    SizedBox(height: 16),
+                    Text(
+                      'Buscando producto...',
+                      style: TextStyle(
+                        color: Color(0xFFFFFFFF),
+                        fontSize: 15,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-              child: Text(
-                'Apunta al código de barras del producto',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: c.textPrimary, fontSize: 15),
+            )
+          else
+            Align(
+              alignment: Alignment.bottomCenter,
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(
+                  24,
+                  0,
+                  24,
+                  32 + MediaQuery.paddingOf(context).bottom,
+                ),
+                child: Text(
+                  'Apunta al código de barras del producto',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: c.textPrimary, fontSize: 15),
+                ),
               ),
             ),
-          ),
         ],
       ),
     );

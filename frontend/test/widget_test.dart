@@ -18,7 +18,7 @@ import 'package:macrobuddy/features/dashboard/dashboard_screen.dart';
 import 'package:macrobuddy/features/navigation/main_scaffold.dart';
 import 'package:macrobuddy/features/navigation/shortcuts_sheet.dart';
 import 'package:macrobuddy/features/profile/edit_profile_screen.dart';
-import 'package:macrobuddy/features/profile/more_screen.dart';
+import 'package:macrobuddy/features/profile/profile_screen.dart';
 import 'package:macrobuddy/features/tools/stopwatch_screen.dart';
 import 'package:macrobuddy/features/tools/timer_screen.dart';
 import 'package:macrobuddy/features/workout/active_workout_screen.dart';
@@ -126,35 +126,34 @@ void main() {
       const ProviderScope(child: MaterialApp(home: DashboardScreen())),
     );
 
-    expect(find.text('DASHBOARD'), findsOneWidget);
+    expect(find.text('MACROBUDDY'), findsOneWidget);
     expect(find.text('Hoy'), findsOneWidget);
     expect(find.text('Insights y análisis'), findsOneWidget);
     expect(find.text('Hábitos'), findsOneWidget);
-    // Anillos nuevos del dashboard.
+    // Leyenda del card de anillos nuevo.
     expect(find.text('Calorías'), findsOneWidget);
     expect(find.text('Entrenamiento'), findsOneWidget);
     expect(find.text('Pasos'), findsOneWidget);
   });
 
-  testWidgets('Main scaffold shows liquid glass nav and quick action', (
-    tester,
-  ) async {
+  testWidgets('Main scaffold: 4 pestañas y FAB contextual', (tester) async {
     await tester.pumpWidget(
       const ProviderScope(child: MaterialApp(home: MainScaffold())),
     );
     await tester.pump();
 
-    // Barra flotante: 4 pestañas + acción rápida central. Sin FAB.
-    expect(find.byType(FloatingActionButton), findsNothing);
-    expect(find.byIcon(Icons.person_outline), findsOneWidget);
-    expect(find.byIcon(Icons.fitness_center_outlined), findsOneWidget);
-    expect(find.byIcon(Icons.apple_outlined), findsOneWidget);
-    // Dashboard arranca seleccionado: icono filled.
-    expect(find.byIcon(Icons.grid_view), findsOneWidget);
-    expect(find.byIcon(Icons.add), findsOneWidget);
+    // Barra flotante: 4 pestañas de navegación. Sin botón central en ella.
+    expect(find.text('Dash'), findsOneWidget);
+    expect(find.text('Nutrición'), findsOneWidget);
+    expect(find.text('Workout'), findsOneWidget);
+    expect(find.text('Perfil'), findsOneWidget);
+    expect(find.byIcon(Icons.add), findsNothing);
+
+    // El + es un FAB contextual encima de la barra (Dashboard: activo).
+    expect(find.byType(FloatingActionButton), findsOneWidget);
   });
 
-  testWidgets('Navigation switches tabs and quick action opens the sheet', (
+  testWidgets('Navigation switches tabs and quick action sheets open', (
     tester,
   ) async {
     await tester.pumpWidget(
@@ -162,23 +161,39 @@ void main() {
     );
     await tester.pump();
 
-    // Tab de Nutrición muestra su placeholder.
-    await tester.tap(find.byIcon(Icons.apple_outlined));
-    await tester.pump();
-    expect(find.text('Sin registros para hoy.'), findsOneWidget);
-
-    // La acción rápida abre la hoja de atajos.
-    await tester.tap(find.bySemanticsLabel('Acción rápida'));
+    // En Dashboard el FAB abre el menú rápido.
+    await tester.tap(find.byType(FloatingActionButton));
     await tester.pumpAndSettle();
-    expect(find.text('Atajos'), findsOneWidget);
+    expect(find.text('Acciones rápidas'), findsOneWidget);
+    // El menú ofrece las tres acciones pedidas.
+    expect(find.text('Registrar alimento'), findsOneWidget);
+    expect(find.text('Registrar peso corporal'), findsOneWidget);
+    expect(find.text('Iniciar entrenamiento'), findsOneWidget);
 
-    // Vuelta a Dashboard: la hoja ofrece su propio botón de cerrar (X).
+    // Vuelta: la hoja ofrece su propio botón de cerrar (X).
     await tester.tap(find.byIcon(Icons.close));
     await tester.pumpAndSettle();
-    // Ahora Nutrición está activa y Dashboard se muestra outlined.
-    await tester.tap(find.byIcon(Icons.grid_view_outlined));
+
+    // En Workouts el FAB abre su menú próprio.
+    await tester.tap(find.text('Workout'));
     await tester.pump();
-    expect(find.text('DASHBOARD'), findsOneWidget);
+    await tester.tap(find.byType(FloatingActionButton));
+    await tester.pumpAndSettle();
+    expect(find.text('Crear nueva rutina'), findsOneWidget);
+    expect(find.text('Añadir ejercicio'), findsOneWidget);
+
+    // Vuelta a Dashboard: la píldora navega de vuelta.
+    await tester.tap(find.byIcon(Icons.close));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Dash'));
+    await tester.pump();
+    expect(find.text('MACROBUDDY'), findsOneWidget);
+
+    // En Perfil el FAB queda oculto (pumpAndSettle: la arena de gestos del
+    // FAB/hero necesita frames extra antes de aplicar el cambio de tab).
+    await tester.tap(find.text('Perfil'));
+    await tester.pumpAndSettle();
+    expect(find.byType(FloatingActionButton), findsNothing);
   });
 
   testWidgets('Workouts screen shows empty state and More section', (
@@ -188,9 +203,10 @@ void main() {
       const ProviderScope(child: MaterialApp(home: WorkoutsScreen())),
     );
 
-    expect(find.text('Entrenos'), findsOneWidget);
+    expect(find.text('WORKOUT'), findsOneWidget);
     expect(find.text('Biblioteca de entrenos'), findsOneWidget);
-    expect(find.text('Programa activo'), findsNothing);
+    expect(find.text('ACTIVE PROGRAM'), findsOneWidget);
+    expect(find.text('MIN MAX PERSONAL'), findsOneWidget);
     expect(find.textContaining('La biblioteca está vacía'), findsOneWidget);
     expect(find.text('Más'), findsOneWidget);
     expect(find.text('Historial de entrenos'), findsOneWidget);
@@ -318,13 +334,15 @@ void main() {
     tester,
   ) async {
     await tester.pumpWidget(
-      const ProviderScope(child: MaterialApp(home: MoreScreen())),
+      const ProviderScope(child: MaterialApp(home: ProfileScreen())),
     );
     await tester.pump();
 
-    expect(find.text('PERFIL'), findsOneWidget);
-    expect(find.text('Perfil'), findsOneWidget);
-    expect(find.text('Comunidad'), findsOneWidget);
+    expect(find.text('CONFIGURACIÓN PERSONAL'), findsOneWidget);
+    expect(find.text('MI ENTRENADOR'), findsOneWidget);
+    expect(find.text('Editar perfil'), findsOneWidget);
+    // Comunidad se eliminó del perfil (ui_corrections_plan.md §4).
+    expect(find.text('Comunidad'), findsNothing);
     expect(find.text('Cerrar sesión'), findsOneWidget);
   });
 
@@ -373,6 +391,7 @@ void main() {
       expect(appBar.automaticallyImplyLeading, isFalse);
 
       // Pressing Guardar Cambios with empty fields shows error SnackBar
+      await tester.ensureVisible(find.text('Guardar Cambios'));
       await tester.tap(find.text('Guardar Cambios'));
       await tester.pump();
 
@@ -461,8 +480,8 @@ void main() {
     );
     await tester.pump();
 
-    // Tap + button in AppBar
-    await tester.tap(find.byIcon(Icons.add));
+    // Tap + button in header
+    await tester.tap(find.byIcon(Icons.add_circle));
     await tester.pumpAndSettle();
 
     expect(find.text('Agregar'), findsOneWidget);
@@ -644,7 +663,7 @@ void main() {
       );
       await tester.pump();
 
-      expect(find.text('DASHBOARD'), findsOneWidget);
+      expect(find.text('MACROBUDDY'), findsOneWidget);
       expect(find.text('Insights y análisis'), findsOneWidget);
       expect(find.text('Volumen total (Lb)'), findsOneWidget);
       expect(find.text('Total: 1960 lb'), findsOneWidget);
@@ -768,7 +787,8 @@ void main() {
       await tester.pump();
 
       expect(find.byType(ReorderableListView), findsOneWidget);
-      expect(find.text('Upper 1'), findsOneWidget);
+      // "Upper 1" aparece en la tarjeta Active Program y en la biblioteca.
+      expect(find.text('Upper 1'), findsNWidgets(2));
       expect(find.text('Lower 1'), findsOneWidget);
     },
   );
@@ -828,13 +848,12 @@ void main() {
       );
       await tester.pump();
 
-      // Anillo Entrenamiento: objetivo del ciclo = nº de entrenos del
-      // programa (Upper 1 + Lower 1 = 2 sesiones objetivo).
-      expect(find.text('2 objetivo'), findsOneWidget);
+      // Card de anillos: objetivo del ciclo = nº de entrenos del programa
+      // (Upper 1 + Lower 1 = 2 sesiones objetivo).
+      expect(find.text('0 / 2 sesiones'), findsOneWidget);
       // Anillos de Calorías y Pasos con sus textos de contexto.
-      expect(find.text('kcal hoy'), findsOneWidget);
-      expect(find.text('pasos hoy'), findsOneWidget);
-      expect(find.text('8000 objetivo'), findsOneWidget);
+      expect(find.text('0 / — kcal'), findsOneWidget);
+      expect(find.text('0 / 8.0k'), findsOneWidget);
     },
   );
 }
@@ -877,6 +896,7 @@ class _TestAuthController extends AuthController {
     required String fullName,
     required String username,
     double? weight,
+    double? bodyFat,
     double? height,
     String? gender,
     String? currentPassword,

@@ -2,32 +2,35 @@ import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/material.dart';
 
+import '../../core/widgets/mb_icon.dart';
 import '../../theme/app_theme.dart';
 
-/// Píldora flotante de cristal líquido: la capa funcional de la app.
-///
-/// Única superficie glass del proyecto (`liquid-glass.md › Restraint`). Las 4
-/// pestañas navegan con etiqueta visible en la activa; el `+` central es una
-/// acción prominente separada por divisores (patrón de la barra de Fotos de
-/// iOS). El acento coral se reserva para esa acción primaria; pestañas y
-/// etiquetas quedan en monocromo sobre el glass (`liquid-glass.md › Color on
-/// glass`). Apariencia fija en oscuro: no hay modo claro en la app.
+/// Píldora flotante de cristal líquido con exactamente 4 pestañas.
+/// Las pestañas navegan; las acciones viven fuera de la barra
+/// (`liquid-glass.md › Best practices`): el `+` contextual es un FAB
+/// aparte en `main_scaffold.dart`.
 class LiquidGlassNavBar extends StatelessWidget {
   const LiquidGlassNavBar({
     super.key,
     required this.selectedIndex,
     required this.onTabSelected,
-    required this.onQuickAction,
   });
 
-  /// 0 Perfil · 1 Entrenos · 2 Acción rápida · 3 Nutrición · 4 Dashboard
+  /// 0 Dashboard · 1 Nutrición · 2 Workouts · 3 Perfil
   final int selectedIndex;
   final ValueChanged<int> onTabSelected;
-  final VoidCallback onQuickAction;
 
   static const double _height = 68;
-  static const double _iconSize = 26;
+  static const double _iconSize = 24;
   static const double _labelSize = 11;
+  static const double _radius = 34;
+
+  static const _tabs = <({String asset, String label, Color accent})>[
+    (asset: MbAssets.dashboard, label: 'Dash', accent: AppColors.primaryCoral),
+    (asset: MbAssets.fruit, label: 'Nutrición', accent: AppColors.primaryCoral),
+    (asset: MbAssets.dumbbell, label: 'Workout', accent: AppColors.secondaryCyan),
+    (asset: MbAssets.profile, label: 'Perfil', accent: AppColors.primaryCoral),
+  ];
 
   @override
   Widget build(BuildContext context) {
@@ -35,7 +38,7 @@ class LiquidGlassNavBar extends StatelessWidget {
     // Flutter no expone reduce-transparency: contraste alto como señal
     // (liquid-glass.md › Accessibility states).
     final noTransparency = MediaQuery.highContrastOf(context);
-    final radius = BorderRadius.circular(AppColors.radiusGlass);
+    final radius = BorderRadius.circular(_radius);
     final pill = DecoratedBox(
       decoration: BoxDecoration(
         borderRadius: radius,
@@ -52,7 +55,7 @@ class LiquidGlassNavBar extends StatelessWidget {
         child: noTransparency
             ? _pill(c, translucent: false)
             : BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 26, sigmaY: 26),
+                filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
                 child: _pill(c, translucent: true),
               ),
       ),
@@ -63,7 +66,7 @@ class LiquidGlassNavBar extends StatelessWidget {
         16,
         0,
         16,
-        12 + MediaQuery.paddingOf(context).bottom,
+        20 + MediaQuery.paddingOf(context).bottom,
       ),
       child: SizedBox(height: _height, child: pill),
     );
@@ -88,99 +91,82 @@ class LiquidGlassNavBar extends StatelessWidget {
         border: Border.all(color: c.glassBorder, width: 1),
       ),
       child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: [
-          _tab(index: 0, label: 'Perfil', icon: Icons.person_outline, activeIcon: Icons.person),
-          _tab(
-            index: 1,
-            label: 'Entrenos',
-            icon: Icons.fitness_center_outlined,
-            activeIcon: Icons.fitness_center,
-          ),
-          _divider(c),
-          _quickAction(),
-          _divider(c),
-          _tab(
-            index: 3,
-            label: 'Nutrición',
-            icon: Icons.apple_outlined,
-            activeIcon: Icons.apple,
-          ),
-          _tab(
-            index: 4,
-            label: 'Dashboard',
-            icon: Icons.grid_view_outlined,
-            activeIcon: Icons.grid_view,
-          ),
+          for (final (index, tab) in _tabs.indexed)
+            _NavTab(
+              asset: tab.asset,
+              label: tab.label,
+              accent: tab.accent,
+              selected: selectedIndex == index,
+              onTap: () => onTabSelected(index),
+            ),
         ],
       ),
     );
   }
+}
 
-  Widget _divider(ThemeColors c) =>
-      Container(width: 1, height: 40, color: c.glassBorder);
+class _NavTab extends StatelessWidget {
+  const _NavTab({
+    required this.asset,
+    required this.label,
+    required this.accent,
+    required this.selected,
+    required this.onTap,
+  });
 
-  /// Acción primaria: fondo acento, símbolo en tinta oscura (6.75:1..8.25:1
-  /// sobre el gradiente coral, por encima del 3:1 de controles gráficos).
-  Widget _quickAction() => Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 14),
-        child: Semantics(
-          label: 'Acción rápida',
-          button: true,
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: onQuickAction,
-            child: Container(
-              width: 44,
-              height: 44,
-              decoration: const BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: AppColors.caloriesGradient,
-              ),
-              child: const Icon(Icons.add, color: AppColors.inkOnAccent, size: 28),
-            ),
-          ),
-        ),
-      );
+  final String asset;
+  final String label;
+  final Color accent;
+  final bool selected;
+  final VoidCallback onTap;
 
-  Widget _tab({
-    required int index,
-    required String label,
-    required IconData icon,
-    required IconData activeIcon,
-  }) {
+  @override
+  Widget build(BuildContext context) {
     const c = ThemeColors.dark;
-    final selected = selectedIndex == index;
-    final color = selected ? c.textPrimary : c.textSecondary;
+    // Inactivo: ícono 3.63:1 (gráfico, pasa 3:1) + label 7.04:1 (pasa 4.5:1).
+    final iconColor = selected ? accent : c.iconMuted;
+    final labelColor = selected ? accent : c.textSecondary;
     return Semantics(
       label: label,
       button: true,
       selected: selected,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
-        onTap: () => onTabSelected(index),
-        child: Center(
-          child: AnimatedSize(
-            duration: const Duration(milliseconds: 150),
-            curve: Curves.easeOut,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(selected ? activeIcon : icon, size: _iconSize, color: color),
-                if (selected) ...[
-                  const SizedBox(height: 2),
-                  Text(
-                    label,
-                    maxLines: 1,
-                    style: TextStyle(
-                      color: color,
-                      fontSize: _labelSize,
-                      height: 1,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ],
-            ),
+        onTap: onTap,
+        child: SizedBox(
+          height: LiquidGlassNavBar._height,
+          width: 68,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              MbIcon(asset, size: LiquidGlassNavBar._iconSize, color: iconColor),
+              const SizedBox(height: 3),
+              Text(
+                label,
+                maxLines: 1,
+                style: TextStyle(
+                  color: labelColor,
+                  fontSize: LiquidGlassNavBar._labelSize,
+                  height: 1,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 3),
+              // Punto de 4px reservado siempre: la píldora no salta al
+              // aparecer el indicador.
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 150),
+                curve: Curves.easeOut,
+                width: 4,
+                height: 4,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: selected ? accent : accent.withValues(alpha: 0),
+                ),
+              ),
+            ],
           ),
         ),
       ),

@@ -19,14 +19,13 @@ class ApiException implements Exception {
 }
 
 class ApiClient {
-  ApiClient({http.Client? client, String? baseUrl})
-    : _client = client ?? http.Client(),
-      _baseUrl = baseUrl ?? ApiConfig.baseUrl;
+  ApiClient({http.Client? client}) : _client = client ?? http.Client();
 
   final http.Client _client;
-  final String _baseUrl;
 
-  Uri _uri(String path) => Uri.parse('$_baseUrl$path');
+  /// Siempre lee la config viva: el usuario puede cambiar de servidor
+  /// en runtime desde la pantalla de login (diálogo "Servidor").
+  Uri _uri(String path) => Uri.parse('${ApiConfig.baseUrl}$path');
 
   Future<Map<String, dynamic>> _post(
     String path,
@@ -200,6 +199,7 @@ class ApiClient {
     required String fullName,
     required String username,
     double? weight,
+    double? bodyFat,
     double? height,
     String? gender,
     String? currentPassword,
@@ -213,6 +213,7 @@ class ApiClient {
       'full_name': fullName,
       'username': username,
       'weight': weight,
+      'bodyFat': bodyFat,
       'height': height,
       'gender': gender,
       'currentPassword': currentPassword,
@@ -342,6 +343,25 @@ Future<Map<String, dynamic>> createWorkout({
     }
     try {
       return jsonDecode(res.body) as Map<String, dynamic>;
+    } catch (_) {
+      throw const ApiException('Respuesta inválida del servidor.');
+    }
+  }
+
+  Future<List<dynamic>> fetchNutritionRange({
+    required String token,
+    required String from,
+    required String to,
+  }) async {
+    final res = await _client.get(
+      _uri('/api/nutrition?from=$from&to=$to'),
+      headers: {'Authorization': 'Bearer $token'},
+    );
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      throw const ApiException('No se pudo cargar la nutrición.');
+    }
+    try {
+      return jsonDecode(res.body) as List<dynamic>;
     } catch (_) {
       throw const ApiException('Respuesta inválida del servidor.');
     }

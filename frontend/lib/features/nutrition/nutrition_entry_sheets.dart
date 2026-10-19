@@ -7,19 +7,11 @@ import '../../core/services/open_food_facts_service.dart';
 import '../../theme/app_theme.dart';
 import 'nutrition_provider.dart';
 
-/// Comida por omisión según la hora local.
-String mealForNow() {
-  final h = DateTime.now().hour;
-  if (h < 11) return 'breakfast';
-  if (h < 15) return 'lunch';
-  if (h < 21) return 'dinner';
-  return 'snack';
-}
-
 void showManualEntrySheet(
   BuildContext context, {
   OffProduct? product,
   NutritionItem? existing,
+  String? time,
 }) {
   showModalBottomSheet<void>(
     context: context,
@@ -28,15 +20,17 @@ void showManualEntrySheet(
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
     ),
-    builder: (_) => _EntrySheet(product: product, existing: existing),
+    builder: (_) =>
+        _EntrySheet(product: product, existing: existing, time: time),
   );
 }
 
 class _EntrySheet extends ConsumerStatefulWidget {
-  const _EntrySheet({this.product, this.existing});
+  const _EntrySheet({this.product, this.existing, this.time});
 
   final OffProduct? product;
   final NutritionItem? existing;
+  final String? time;
 
   @override
   ConsumerState<_EntrySheet> createState() => _EntrySheetState();
@@ -44,13 +38,17 @@ class _EntrySheet extends ConsumerStatefulWidget {
 
 class _EntrySheetState extends ConsumerState<_EntrySheet> {
   late final List<TextEditingController> _fields;
-  late String _meal;
+  late String _time;
+  late final TextEditingController _labelController;
   bool _saving = false;
 
   @override
   void initState() {
     super.initState();
-    _meal = widget.existing?.meal ?? mealForNow();
+    _labelController = TextEditingController(text: widget.existing?.label);
+    _time = widget.existing != null
+        ? effectiveTime(widget.existing!)
+        : (widget.time ?? nutritionNowTime());
     // [nombre, gramos, kcal, proteína, carbohidratos, grasas]
     _fields = [
       for (final controller in [
@@ -81,7 +79,28 @@ class _EntrySheetState extends ConsumerState<_EntrySheet> {
     for (final f in _fields) {
       f.dispose();
     }
+    _labelController.dispose();
     super.dispose();
+  }
+
+  Future<void> _pickTime() async {
+    final parts = _time.split(':');
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay(
+        hour: int.tryParse(parts.isNotEmpty ? parts[0] : '') ?? 0,
+        minute: parts.length > 1 ? int.tryParse(parts[1]) ?? 0 : 0,
+      ),
+      builder: (context, child) => Theme(
+        data: Theme.of(context),
+        child: child ?? const SizedBox.shrink(),
+      ),
+    );
+    if (picked == null) return;
+    setState(() {
+      _time = '${picked.hour.toString().padLeft(2, '0')}:'
+          '${picked.minute.toString().padLeft(2, '0')}';
+    });
   }
 
   Future<void> _save() async {
@@ -91,6 +110,8 @@ class _EntrySheetState extends ConsumerState<_EntrySheet> {
     }
     setState(() => _saving = true);
     final controller = ref.read(nutritionProvider.notifier);
+    final time = _time;
+    final label = _labelController.text.trim();
     final ok = widget.existing == null
         ? await controller.addItems([
             NutritionItem(
@@ -102,16 +123,19 @@ class _EntrySheetState extends ConsumerState<_EntrySheet> {
               protein: _parse(_fields[3]) ?? 0,
               carbs: _parse(_fields[4]) ?? 0,
               fats: _parse(_fields[5]) ?? 0,
-              meal: _meal,
+              time: time,
+              label: label.isEmpty ? null : label,
             ).toRequest(),
           ])
-        : await controller.updateQuantity(
+        : await controller.updateItem(
             widget.existing!,
             _parse(_fields[1]) ?? widget.existing!.quantityG,
             calories: _parse(_fields[2]) ?? widget.existing!.calories,
             protein: _parse(_fields[3]) ?? widget.existing!.protein,
             carbs: _parse(_fields[4]) ?? widget.existing!.carbs,
             fats: _parse(_fields[5]) ?? widget.existing!.fats,
+            time: time,
+            label: label,
           );
     if (!mounted) return;
     Navigator.of(context).pop();
@@ -174,9 +198,11 @@ class _EntrySheetState extends ConsumerState<_EntrySheet> {
               children: [
                 Expanded(child: _field(_fields[1], 'Gramos', number: true)),
                 const SizedBox(width: 8),
-                Expanded(child: _mealDropdown(c)),
+                Expanded(child: _timeField(c)),
               ],
             ),
+            _field(_labelController, 'Etiqueta',
+                hint: 'Ej. pre-entreno'),
             Row(
               children: [
                 Expanded(child: _field(_fields[2], 'Kcal', number: true)),
@@ -193,7 +219,6 @@ class _EntrySheetState extends ConsumerState<_EntrySheet> {
             ),
             const SizedBox(height: 12),
             ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: c.textPrimary),
               onPressed: _saving ? null : _save,
               child: _saving
                   ? SizedBox(
@@ -207,6 +232,47 @@ class _EntrySheetState extends ConsumerState<_EntrySheet> {
                   : Text('Guardar', style: TextStyle(color: c.scaffold)),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  /// Píldora de hora: abre el `showTimePicker` nativo.
+  Widget _timeField(ThemeColors c) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: _pickTime,
+        child: InputDecorator(
+          decoration: InputDecoration(
+            isDense: true,
+            labelText: 'Hora',
+            labelStyle: TextStyle(color: c.textSecondary, fontSize: 13),
+            filled: true,
+            fillColor: ThemeColors.dark.input,
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide.none,
+            ),
+          ),
+          child: SizedBox(
+            height: 24,
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    formatTime12h(_time),
+                    style: TextStyle(
+                      color: c.textPrimary,
+                      fontSize: 14,
+                    ).merge(AppTypography.numeric),
+                  ),
+                ),
+                Icon(Icons.access_time, size: 18, color: c.textSecondary),
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -243,38 +309,6 @@ class _EntrySheetState extends ConsumerState<_EntrySheet> {
             borderSide: BorderSide.none,
           ),
         ),
-      ),
-    );
-  }
-
-  Widget _mealDropdown(ThemeColors c) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: DropdownButtonFormField<String>(
-        initialValue: _meal,
-        items: [
-          for (final m in nutritionMeals)
-            DropdownMenuItem(
-              value: m,
-              child: Text(
-                nutritionMealLabels[m]!,
-                style: TextStyle(color: c.textPrimary, fontSize: 13),
-              ),
-            ),
-        ],
-        style: TextStyle(color: c.textPrimary, fontSize: 13),
-        dropdownColor: ThemeColors.dark.card,
-        decoration: InputDecoration(
-          labelText: 'Comida',
-          labelStyle: TextStyle(color: c.textSecondary, fontSize: 13),
-          filled: true,
-          fillColor: ThemeColors.dark.input,
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide.none,
-          ),
-        ),
-        onChanged: (v) => setState(() => _meal = v ?? 'snack'),
       ),
     );
   }

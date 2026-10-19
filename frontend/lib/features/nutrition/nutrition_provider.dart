@@ -37,6 +37,28 @@ final nutritionProvider =
     NotifierProvider<NutritionController, NutritionState>(
   NutritionController.new,
 );
+
+/// Historial de los últimos `days` días (inclusive) para el dashboard.
+/// `NutritionLog` directo del backend; el propio rango ya existe en la API.
+final nutritionHistoryProvider =
+    FutureProvider.family<List<NutritionLog>, int>((ref, days) async {
+  final token = ref.watch(authControllerProvider.select((s) => s.token));
+  if (token == null || days <= 0) return const [];
+  final today = DateTime.now();
+  String key(DateTime d) =>
+      '${d.year.toString().padLeft(4, '0')}-'
+      '${d.month.toString().padLeft(2, '0')}-'
+      '${d.day.toString().padLeft(2, '0')}';
+  final from = key(today.subtract(Duration(days: days - 1)));
+  final to = key(today);
+  final list = await ref
+      .read(apiClientProvider)
+      .fetchNutritionRange(token: token, from: from, to: to);
+  return list
+      .whereType<Map<String, dynamic>>()
+      .map(NutritionLog.fromJson)
+      .toList();
+});
 class NutritionController extends Notifier<NutritionState> {
   @override
   NutritionState build() {
@@ -86,15 +108,17 @@ class NutritionController extends Notifier<NutritionState> {
     }
   }
 
-  /// Actualiza `quantity_g` (y opcionalmente los macros recalculados) de un
-  /// ítem. El backend recalcula los totales del día.
-  Future<bool> updateQuantity(
+  /// Actualiza un ítem: gramos, macros y hora del registro. El backend
+  /// recalcula los totales del día.
+  Future<bool> updateItem(
     NutritionItem item,
     double grams, {
     required double calories,
     required double protein,
     required double carbs,
     required double fats,
+    String? time,
+    String? label,
   }) async {
     final token = ref.read(authControllerProvider).token;
     final date = state.date;
@@ -105,7 +129,9 @@ class NutritionController extends Notifier<NutritionState> {
         ..['calories'] = calories
         ..['protein'] = protein
         ..['carbs'] = carbs
-        ..['fats'] = fats;
+        ..['fats'] = fats
+        ..['time'] = time
+        ..['label'] = label;
       final json = await _api.patchNutritionItem(token: token, body: body..['date'] = date);
       if (state.date == date) {
         state = state.copyWith(log: NutritionLog.fromJson(json));

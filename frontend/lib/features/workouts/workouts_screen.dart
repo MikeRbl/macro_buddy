@@ -1,11 +1,15 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:table_calendar/table_calendar.dart';
 
 import '../../core/api/api_client.dart';
 import '../../core/models/workout_plan.dart';
+import '../../core/widgets/glass_card.dart';
 import '../../theme/app_theme.dart';
 import '../auth/auth_controller.dart';
+import '../dashboard/dashboard_provider.dart';
 import '../workout/active_workout_screen.dart';
 import '../workout/workout_models.dart';
 import '../workout/workout_preview_screen.dart';
@@ -26,6 +30,8 @@ class _WorkoutsScreenState extends ConsumerState<WorkoutsScreen> {
   late final List<DateTime> _days;
   late DateTime _selectedDay;
   Set<DateTime> _trainedDays = {};
+  // Checkbox de rutinas de la semana (estado de la vista).
+  final Set<int> _checkedRoutines = {};
 
   @override
   void initState() {
@@ -121,31 +127,52 @@ class _WorkoutsScreenState extends ConsumerState<WorkoutsScreen> {
   Widget build(BuildContext context) {
     final c = ThemeColors.of(context);
     return Scaffold(
-      appBar: AppBar(
-        leading: IconButton(
-          onPressed: _openCalendar,
-          icon: Icon(Icons.calendar_today, color: c.textPrimary),
-        ),
-        centerTitle: true,
-        title: Text(
-          'Entrenos',
-          style: TextStyle(
-            color: c.textPrimary,
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        actions: [
-          IconButton(
-            onPressed: _openAddSheet,
-            icon: Icon(Icons.add, color: c.textPrimary),
-          ),
-        ],
-      ),
       body: SingleChildScrollView(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            SafeArea(
+              bottom: false,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppColors.screenPadding,
+                  vertical: 8,
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'WORKOUT',
+                        style: TextStyle(
+                          color: c.textPrimary,
+                          fontSize: 28,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: -0.5,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: _openHistory,
+                      icon: Icon(Icons.history, color: c.textPrimary),
+                    ),
+                    IconButton(
+                      onPressed: _openCalendar,
+                      icon: Icon(
+                        Icons.calendar_today,
+                        color: AppColors.secondaryCyan,
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: _openAddSheet,
+                      icon: const Icon(
+                        Icons.add_circle,
+                        color: AppColors.secondaryCyan,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
             _DayCarousel(
               days: _days,
               dayNames: _dayNames,
@@ -154,6 +181,15 @@ class _WorkoutsScreenState extends ConsumerState<WorkoutsScreen> {
               onSelect: (day) => setState(() => _selectedDay = day),
             ),
             const SizedBox(height: 16),
+            _ActiveProgramCard(
+              checkedRoutines: _checkedRoutines,
+              onToggleRoutine: (i) => setState(() {
+                if (!_checkedRoutines.add(i)) _checkedRoutines.remove(i);
+              }),
+            ),
+            const SizedBox(height: 16),
+            const _MinMaxPersonalCard(),
+            const SizedBox(height: 24),
             _SectionHeader(title: 'Biblioteca de entrenos', action: ''),
             const SizedBox(height: 12),
             _buildLibrary(c),
@@ -165,6 +201,8 @@ class _WorkoutsScreenState extends ConsumerState<WorkoutsScreen> {
               onHistory: _openHistory,
             ),
             const SizedBox(height: 24),
+            // Zona inferior para no quedar oculto bajo el navbar ni el FAB.
+            const SizedBox(height: 170),
           ],
         ),
       ),
@@ -247,7 +285,7 @@ class _DayCarousel extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = ThemeColors.of(context);
     return SizedBox(
-      height: 70,
+      height: 78,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -256,15 +294,19 @@ class _DayCarousel extends StatelessWidget {
         itemBuilder: (context, index) {
           final day = days[index];
           final selected = day == selectedDay;
+          final rested = day.weekday == DateTime.sunday;
+          final reload = day.weekday == DateTime.wednesday;
           return GestureDetector(
             onTap: () => onSelect(day),
             child: Container(
-              width: 50,
-              height: 65,
+              width: 52,
+              height: 74,
               decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(32),
+                borderRadius: BorderRadius.circular(26),
                 border: Border.all(
-                  color: selected ? AppColors.accentTeal : c.input,
+                  color: selected
+                      ? AppColors.secondaryCyan
+                      : c.input,
                   width: selected ? 2 : 1,
                 ),
               ),
@@ -287,15 +329,25 @@ class _DayCarousel extends StatelessWidget {
                       fontSize: 14,
                     ),
                   ),
-                  const SizedBox(height: 4),
+                  const SizedBox(height: 3),
                   if (hasWorkout(day))
                     Container(
                       width: 4,
                       height: 4,
                       decoration: const BoxDecoration(
-                        color: AppColors.accentOrange,
+                        color: AppColors.secondaryCyan,
                         shape: BoxShape.circle,
                       ),
+                    )
+                  else if (rested)
+                    const _DayBadge(
+                      'DESCANSO',
+                      color: AppColors.tertiaryPurple,
+                    )
+                  else if (reload)
+                    const _DayBadge(
+                      'RECARGA',
+                      color: AppColors.secondaryCyan,
                     )
                   else
                     const SizedBox(height: 4),
@@ -304,6 +356,248 @@ class _DayCarousel extends StatelessWidget {
             ),
           );
         },
+      ),
+    );
+  }
+}
+
+/// Badge micro bajo el día: DESCANSO (púrpura) o RECARGA (cian).
+class _DayBadge extends StatelessWidget {
+  const _DayBadge(this.text, {required this.color});
+
+  final String text;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 1),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.16),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(
+          color: color,
+          fontSize: 6.5,
+          fontWeight: FontWeight.w800,
+          letterSpacing: 0.5,
+        ),
+      ),
+    );
+  }
+}
+
+/// Tarjeta "Active Program": plan activo + número de semana derivado de la
+/// primera sesión registrada (fallback "Semana 1") + rutinas A–E.
+class _ActiveProgramCard extends ConsumerWidget {
+  const _ActiveProgramCard({
+    required this.checkedRoutines,
+    required this.onToggleRoutine,
+  });
+
+  final Set<int> checkedRoutines;
+  final ValueChanged<int> onToggleRoutine;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final c = ThemeColors.of(context);
+    final ws = ref.watch(workoutProvider);
+    WorkoutPlan? active;
+    if (ws.workouts.isNotEmpty) {
+      for (final p in ws.workouts) {
+        if (p.id == ws.activeWorkoutId) {
+          active = p;
+          break;
+        }
+      }
+      active ??= ws.workouts.first;
+    }
+
+    // Semana derivada de la primera sesión registrada (fallback "Semana 1").
+    final sessions = ref.watch(dashboardProvider).value ?? const [];
+    DateTime? first;
+    for (final s in sessions) {
+      final d = DateTime(s.date.year, s.date.month, s.date.day);
+      if (first == null || d.isBefore(first)) first = d;
+    }
+    int week = 1;
+    if (first != null) {
+      week = (DateTime.now().difference(first).inDays / 7).floor() + 1;
+      if (week < 1) week = 1;
+    }
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      child: GlassCard(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'ACTIVE PROGRAM',
+                        style: TextStyle(
+                          color: AppColors.secondaryCyan,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 1,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        active?.name ?? 'Sin programa activo',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: c.textPrimary,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: AppColors.secondaryCyan.withValues(alpha: 0.14),
+                    borderRadius: BorderRadius.circular(99),
+                  ),
+                  child: Text(
+                    'Semana $week',
+                    style: const TextStyle(
+                      color: AppColors.secondaryCyan,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            if (ws.workouts.isEmpty)
+              Text(
+                'Crea tu primer programa con el botón + para ver rutinas aquí.',
+                style: TextStyle(color: c.textSecondary, fontSize: 12),
+              )
+            else
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (var i = 0; i < ws.workouts.length && i < 5; i++)
+                    FilterChip(
+                      label: Text(
+                        '${String.fromCharCode(65 + i)} · ${ws.workouts[i].name}',
+                        style: TextStyle(
+                          color: checkedRoutines.contains(i)
+                              ? AppColors.inkOnAccent
+                              : c.textPrimary,
+                          fontSize: 12,
+                        ),
+                      ),
+                      selected: checkedRoutines.contains(i),
+                      selectedColor: AppColors.secondaryCyan,
+                      backgroundColor: c.input,
+                      checkmarkColor: AppColors.inkOnAccent,
+                      side: BorderSide(
+                        color: checkedRoutines.contains(i)
+                            ? AppColors.secondaryCyan
+                            : c.border,
+                      ),
+                      onSelected: (_) => onToggleRoutine(i),
+                    ),
+                ],
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Récords personales: peso máximo y mínimo por ejercicio del historial.
+class _MinMaxPersonalCard extends ConsumerWidget {
+  const _MinMaxPersonalCard();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    const c = ThemeColors.dark;
+    final sessions = ref.watch(dashboardProvider).value ?? const [];
+    final stats = <String, ({double max, double min})>{};
+    for (final s in sessions) {
+      for (final set in s.sets) {
+        final name = set.exerciseName?.trim();
+        final w = set.weight ?? 0;
+        if (name == null || name.isEmpty || w <= 0) continue;
+        final prev = stats[name];
+        stats[name] = (
+          max: w > (prev?.max ?? 0) ? w : (prev?.max ?? 0),
+          min: prev == null ? w : math.min(prev.min, w),
+        );
+      }
+    }
+    final entries = stats.entries.take(3).toList();
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      child: GlassCard(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'MIN MAX PERSONAL',
+              style: TextStyle(
+                color: AppColors.secondaryCyan,
+                fontSize: 10,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 1,
+              ),
+            ),
+            const SizedBox(height: 12),
+            if (entries.isEmpty)
+              Text(
+                'Registra tus series para ver tus máximos.',
+                style: TextStyle(color: c.textSecondary, fontSize: 12),
+              )
+            else
+              for (final e in entries) ...[
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          e.key,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: c.textPrimary,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ),
+                      Text(
+                        'MAX ${e.value.max.round()} kg · '
+                        'MIN ${e.value.min.round()} kg',
+                        style: TextStyle(
+                          color: c.textSecondary,
+                          fontSize: 11,
+                        ).merge(AppTypography.numeric),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+          ],
+        ),
       ),
     );
   }

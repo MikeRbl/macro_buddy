@@ -1,5 +1,7 @@
 import mongoose from "mongoose";
 
+const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+
 const consumedItemSchema = new mongoose.Schema(
   {
     name: { type: String, required: true, trim: true },
@@ -9,6 +11,10 @@ const consumedItemSchema = new mongoose.Schema(
     protein: { type: Number, default: 0, min: 0 },
     carbs: { type: Number, default: 0, min: 0 },
     fats: { type: Number, default: 0, min: 0 },
+    // Agrupación por hora del día ("HH:mm"). `meal` queda deprecado: se
+    // conserva para no romper documentos existentes.
+    time: { type: String, match: TIME_RE },
+    label: { type: String, trim: true, maxlength: 60 },
     meal: {
       type: String,
       enum: ["breakfast", "lunch", "dinner", "snack"],

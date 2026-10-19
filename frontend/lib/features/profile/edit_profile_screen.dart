@@ -25,6 +25,7 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
   late final TextEditingController _currentPasswordController;
   late final TextEditingController _newPasswordController;
   late final TextEditingController _weightController;
+  late final TextEditingController _bodyFatController;
   late final TextEditingController _heightController;
   late final List<TextEditingController> _macroControllers;
   late String _gender;
@@ -44,6 +45,9 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
     _newPasswordController = TextEditingController();
     _weightController = TextEditingController(
       text: user?.weight?.toStringAsFixed(0) ?? '',
+    );
+    _bodyFatController = TextEditingController(
+      text: user?.bodyFat?.toStringAsFixed(1) ?? '',
     );
     _heightController = TextEditingController(
       text: user?.height?.toStringAsFixed(0) ?? '',
@@ -67,6 +71,7 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
     _currentPasswordController.dispose();
     _newPasswordController.dispose();
     _weightController.dispose();
+    _bodyFatController.dispose();
     _heightController.dispose();
     for (final c in _macroControllers) {
       c.dispose();
@@ -80,8 +85,10 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
     final name = _fullNameController.text.trim();
     final weightStr = _weightController.text.trim().replaceAll(',', '.');
     final heightStr = _heightController.text.trim().replaceAll(',', '.');
+    final bodyFatStr = _bodyFatController.text.trim().replaceAll(',', '.');
     final weight = double.tryParse(weightStr);
     final height = double.tryParse(heightStr);
+    final bodyFat = double.tryParse(bodyFatStr);
 
     double? parseMacro(int i) =>
         double.tryParse(_macroControllers[i].text.trim().replaceAll(',', '.'));
@@ -117,6 +124,7 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
           username: _usernameController.text.trim(),
           weight: weight,
           height: height,
+          bodyFat: bodyFat,
           gender: _gender,
           currentPassword: _currentPasswordController.text.isEmpty
               ? null
@@ -261,6 +269,21 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
                     ),
                   ),
                 ],
+              ),
+              const SizedBox(height: 16),
+              // Grasa corporal estimada; es opcional.
+              TextField(
+                controller: _bodyFatController,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                inputFormatters: [
+                  FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
+                ],
+                decoration: const InputDecoration(
+                  hintText: 'Grasa corporal (opcional)',
+                  suffixText: '%',
+                ),
               ),
               const SizedBox(height: 16),
               _MacrosSection(guided: user?.isGuidedMode ?? false, controllers: _macroControllers),

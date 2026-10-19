@@ -6,6 +6,7 @@ import { verifyToken } from "@/lib/auth";
 const MEALS = ["breakfast", "lunch", "dinner", "snack"] as const;
 type Meal = (typeof MEALS)[number];
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 interface ItemInput {
   name?: string;
@@ -15,6 +16,8 @@ interface ItemInput {
   protein?: number;
   carbs?: number;
   fats?: number;
+  time?: string;
+  label?: string;
   meal?: string;
 }
 
@@ -27,6 +30,8 @@ interface ItemLike {
   protein: number;
   carbs: number;
   fats: number;
+  time?: string | null;
+  label?: string | null;
   meal: string;
   logged_at: Date;
 }
@@ -57,6 +62,14 @@ function today(): string {
 }
 
 function normalizeItem(input: ItemInput) {
+  const time =
+    typeof input.time === "string" && TIME_RE.test(input.time.trim())
+      ? input.time.trim()
+      : undefined;
+  const label =
+    typeof input.label === "string" && input.label.trim()
+      ? input.label.trim().slice(0, 60)
+      : undefined;
   return {
     name: String(input.name ?? "").trim(),
     barcode: input.barcode != null ? String(input.barcode) : undefined,
@@ -65,6 +78,8 @@ function normalizeItem(input: ItemInput) {
     protein: Number(input.protein ?? 0),
     carbs: Number(input.carbs ?? 0),
     fats: Number(input.fats ?? 0),
+    time,
+    label,
     meal: (MEALS as readonly string[]).includes(input.meal ?? "")
       ? (input.meal as string)
       : "snack",
@@ -95,6 +110,8 @@ function serialize(doc: LogLike) {
       protein: it.protein,
       carbs: it.carbs,
       fats: it.fats,
+      time: it.time ?? null,
+      label: it.label ?? null,
       meal: it.meal,
       loggedAt: it.logged_at.toISOString(),
     })),
@@ -230,6 +247,12 @@ export async function PATCH(req: NextRequest) {
   if (body.fats != null) item.fats = Number(body.fats);
   if ((MEALS as readonly string[]).includes(body.meal ?? "")) {
     item.meal = body.meal as Meal;
+  }
+  if (typeof body.time === "string" && TIME_RE.test(body.time.trim())) {
+    item.time = body.time.trim();
+  }
+  if (typeof body.label === "string") {
+    item.label = body.label.trim().slice(0, 60);
   }
 
   recalc(doc as unknown as LogLike);

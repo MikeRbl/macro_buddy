@@ -1,4 +1,5 @@
 import http from "http";
+import os from "os";
 import { parse } from "url";
 import next from "next";
 import { WebSocketServer, WebSocket } from "ws";
@@ -193,6 +194,18 @@ async function main(): Promise<void> {
     const { pathname } = parse(req.url ?? "", true);
     const isApi = pathname?.startsWith("/api/") ?? false;
 
+    // Log de requests de API: confirma en la terminal que el teléfono
+    // atingió al servidor (con IP de origen y status).
+    if (isApi) {
+      const startedAt = Date.now();
+      res.on("finish", () => {
+        console.log(
+          `> ${req.method} ${pathname} desde ${req.socket.remoteAddress} → ` +
+            `${res.statusCode} (${Date.now() - startedAt}ms)`
+        );
+      });
+    }
+
     if (isApi) {
       res.setHeader("Access-Control-Allow-Origin", "*");
       res.setHeader(
@@ -243,6 +256,10 @@ async function main(): Promise<void> {
       }
     }
     connState.set(ws, { userId, username, status: "online" });
+    console.log(
+      `> WS /ws conectado desde ${req.socket.remoteAddress}` +
+        (username ? ` (user: ${username})` : " (anon)")
+    );
     for (const channel of DEFAULT_CHANNELS) subscribe(ws, channel);
     if (userId) {
       sendActiveUsersTo(ws);
@@ -260,6 +277,9 @@ async function main(): Promise<void> {
     ws.on("close", () => {
       for (const channel of DEFAULT_CHANNELS) unsubscribe(ws, channel);
       connState.delete(ws);
+      console.log(
+        `> WS /ws desconectado (/ws ${username ? `user: ${username}` : "anon"})`
+      );
     });
 
     ws.send(
@@ -274,7 +294,36 @@ async function main(): Promise<void> {
   server.listen(port, "0.0.0.0", () => {
     console.log(`> Macrobuddy server ready on http://localhost:${port}`);
     console.log(`> WebSocket server listening on /ws`);
+    const lanIps = listLanIps();
+    if (lanIps.length > 0) {
+      console.log(
+        "> Para la app (diálogo Servidor del login), usa una de estas URLs:"
+      );
+      for (const ip of lanIps) {
+        console.log(`   http://${ip}:${port}`);
+      }
+    } else {
+      console.log(
+        "> Sin IP de LAN detectada: revisa tu conexión de red (la app " +
+          "necesita una IP tipo 192.168.x.x para conectar desde el teléfono)."
+      );
+    }
   });
+}
+
+/// IPv4 de las interfaces de red no virtuales: la URL que el teléfono
+/// (u otro dispositivo de la misma red) debe usar para alcanzar el API.
+/// Quita duplicados y doenet las RFC 3927 (169.254.x.x, sin DHCP).
+function listLanIps(): string[] {
+  const ips = new Set<string>();
+  for (const nets of Object.values(os.networkInterfaces())) {
+    for (const net of nets ?? []) {
+      if (net.family !== "IPv4" || net.internal) continue;
+      if (net.address.startsWith("169.254.")) continue;
+      ips.add(net.address);
+    }
+  }
+  return [...ips];
 }
 
 main().catch((err) => {

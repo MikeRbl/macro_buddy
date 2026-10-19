@@ -1,15 +1,29 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 /// Accent colors and geometry shared by both themes.
 abstract final class AppColors {
-  static const Color accentOrange = Color(0xFFFF9500);
-  static const Color accentBlue = Color(0xFF0A84FF);
-  static const Color accentPurple = Color(0xFFBF5AF2);
-  static const Color accentTeal = Color(0xFF30D158);
+  // Paleta Macrobuddy (design tokens).
+  static const Color background = Color(0xFF0A0A0A);
+  static const Color surfaceCard = Color(0xFF141416);
+  static const Color surfaceAlt = Color(0xFF1C1C1F);
+  static const Color border = Color(0xFF262629);
+  static const Color primaryCoral = Color(0xFFFF6B6B);
+  static const Color secondaryCyan = Color(0xFF00E5FF);
+  static const Color tertiaryPurple = Color(0xFFB388FF);
+  static const Color warningAmber = Color(0xFFFFB300);
+  static const Color successGreen = Color(0xFF00E676);
+  static const Color iconMuted = Color(0xFF6E6E73);
+  static const Color textSecondary = Color(0xFFA0A0A0);
   static const Color danger = Color(0xFFFF3B30);
 
-  // Macrobuddy tokens: energía (calorías), fuerza (entrenos) y cuerpo.
-  static const Color coral = Color(0xFFFF6B6B);
+  // Alias legacy: mantienen las referencias de pantallas que aún no usan
+  // los nuevos tokens (Fase C las migra).
+  static const Color accentOrange = primaryCoral;
+  static const Color accentBlue = secondaryCyan;
+  static const Color accentPurple = tertiaryPurple;
+  static const Color accentTeal = successGreen;
+  static const Color coral = primaryCoral;
   static const Color coralLight = Color(0xFFFF8E53);
   static const Color inkOnAccent = Color(0xFF121212);
   static const Gradient caloriesGradient = LinearGradient(
@@ -33,6 +47,8 @@ class ThemeColors extends ThemeExtension<ThemeColors> {
     required this.input,
     required this.textPrimary,
     required this.textSecondary,
+    required this.border,
+    required this.iconMuted,
     required this.glassFill,
     required this.glassBorder,
   });
@@ -42,19 +58,23 @@ class ThemeColors extends ThemeExtension<ThemeColors> {
   final Color input;
   final Color textPrimary;
   final Color textSecondary;
+  final Color border;
+  final Color iconMuted;
 
   // Capa funcional de cristal: relleno translúcido + borde de 1px.
   final Color glassFill;
   final Color glassBorder;
 
   static const ThemeColors dark = ThemeColors(
-    scaffold: Color(0xFF121212),
-    card: Color(0xFF1C1C1E),
-    input: Color(0xFF2C2C2E),
+    scaffold: AppColors.background,
+    card: AppColors.surfaceCard,
+    input: AppColors.surfaceAlt,
     textPrimary: Color(0xFFFFFFFF),
-    textSecondary: Color(0xFFA0A0A0),
-    glassFill: Color(0x0FFFFFFF),
-    glassBorder: Color(0x1FFFFFFF),
+    textSecondary: AppColors.textSecondary,
+    border: AppColors.border,
+    iconMuted: AppColors.iconMuted,
+    glassFill: Color(0xEB141416), // #141416 al 92 %
+    glassBorder: Color(0x14FFFFFF), // blanco al 8 %
   );
 
   static ThemeColors of(BuildContext context) =>
@@ -67,6 +87,8 @@ class ThemeColors extends ThemeExtension<ThemeColors> {
     Color? input,
     Color? textPrimary,
     Color? textSecondary,
+    Color? border,
+    Color? iconMuted,
     Color? glassFill,
     Color? glassBorder,
   }) {
@@ -76,6 +98,8 @@ class ThemeColors extends ThemeExtension<ThemeColors> {
       input: input ?? this.input,
       textPrimary: textPrimary ?? this.textPrimary,
       textSecondary: textSecondary ?? this.textSecondary,
+      border: border ?? this.border,
+      iconMuted: iconMuted ?? this.iconMuted,
       glassFill: glassFill ?? this.glassFill,
       glassBorder: glassBorder ?? this.glassBorder,
     );
@@ -90,6 +114,8 @@ class ThemeColors extends ThemeExtension<ThemeColors> {
       input: Color.lerp(input, other.input, t)!,
       textPrimary: Color.lerp(textPrimary, other.textPrimary, t)!,
       textSecondary: Color.lerp(textSecondary, other.textSecondary, t)!,
+      border: Color.lerp(border, other.border, t)!,
+      iconMuted: Color.lerp(iconMuted, other.iconMuted, t)!,
       glassFill: Color.lerp(glassFill, other.glassFill, t)!,
       glassBorder: Color.lerp(glassBorder, other.glassBorder, t)!,
     );
@@ -98,7 +124,7 @@ class ThemeColors extends ThemeExtension<ThemeColors> {
 
 /// Tipografía para datos: números tabulares alinean macros y pesos en columnas.
 abstract final class AppTypography {
-  static final TextStyle numeric = const TextStyle().copyWith(
+  static final TextStyle numeric = GoogleFonts.jetBrainsMono().copyWith(
     fontFeatures: const [FontFeature.tabularFigures()],
   );
 }
@@ -109,8 +135,9 @@ abstract final class AppTheme {
   static ThemeData _build() {
     const colors = ThemeColors.dark;
     final colorScheme = ColorScheme.dark(
-      primary: AppColors.accentOrange,
-      secondary: AppColors.accentBlue,
+      primary: AppColors.primaryCoral,
+      secondary: AppColors.secondaryCyan,
+      tertiary: AppColors.tertiaryPurple,
       surface: colors.card,
       onSurface: colors.textPrimary,
       onSurfaceVariant: colors.textSecondary,
@@ -123,6 +150,9 @@ abstract final class AppTheme {
       colorScheme: colorScheme,
       scaffoldBackgroundColor: colors.scaffold,
       extensions: [colors],
+      textTheme: GoogleFonts.interTextTheme(
+        ThemeData(brightness: Brightness.dark).textTheme,
+      ),
       appBarTheme: AppBarTheme(
         backgroundColor: colors.scaffold,
         elevation: 0,
@@ -149,7 +179,7 @@ abstract final class AppTheme {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(AppColors.radiusInput),
-          borderSide: const BorderSide(color: AppColors.accentOrange),
+          borderSide: const BorderSide(color: AppColors.primaryCoral),
         ),
         errorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(AppColors.radiusInput),
@@ -162,8 +192,8 @@ abstract final class AppTheme {
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
-          backgroundColor: colors.textPrimary,
-          foregroundColor: colors.scaffold,
+          backgroundColor: AppColors.primaryCoral,
+          foregroundColor: AppColors.inkOnAccent,
           elevation: 0,
           minimumSize: const Size.fromHeight(52),
           shape: RoundedRectangleBorder(
@@ -183,6 +213,7 @@ abstract final class AppTheme {
         elevation: 0,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(AppColors.radiusCard),
+          side: const BorderSide(color: AppColors.border),
         ),
       ),
     );

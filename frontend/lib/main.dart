@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'core/config/api_config.dart';
 import 'features/auth/auth_controller.dart';
 import 'features/auth/login_screen.dart';
 import 'features/navigation/main_scaffold.dart';
 import 'theme/app_theme.dart';
 
-void main() {
+Future<void> main() async {
+  await ApiConfig.load();
   runApp(const ProviderScope(child: MacrobuddyApp()));
 }
 

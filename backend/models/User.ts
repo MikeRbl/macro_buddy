@@ -14,6 +14,19 @@ const userSchema = new mongoose.Schema(
     password_hash: { type: String, required: true },
     weight: { type: Number },
     height: { type: Number },
+    // Grasa corporal estimada (%) reportada por el usuario (opcional).
+    body_fat: { type: Number, min: 0, max: 100 },
+    // Historial de registro diario de peso "YYYY-MM-DD" -> weight.
+    // Cap de 365 entradas para acotar el documento; el más reciente gana.
+    weight_logs: {
+      type: [
+        new mongoose.Schema(
+          { date: String, weight: Number },
+          { _id: false }
+        ),
+      ],
+      default: [],
+    },
     gender: {
       type: String,
       enum: ["male", "female", "other", "prefer_not_to_say"],

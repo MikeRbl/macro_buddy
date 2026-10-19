@@ -94,6 +94,10 @@ export async function POST(req: NextRequest) {
         fullName: user.full_name ?? null,
         weight: user.weight ?? null,
         height: user.height ?? null,
+        bodyFat: user.body_fat ?? null,
+        weightHistory: (user.weight_logs ?? [])
+          .slice(-365)
+          .map((l) => ({ date: l.date, weight: l.weight })),
         gender: user.gender ?? null,
         targetCalories: user.target_calories ?? null,
         targetProtein: user.target_protein ?? null,
