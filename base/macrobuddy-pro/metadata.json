@@ -1,0 +1,6 @@
+{
+  "name": "Macrobuddy Pro",
+  "description": "Liquid performance fitness and nutrition tracking app with guided coach mode, workout programming, and macro management.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
