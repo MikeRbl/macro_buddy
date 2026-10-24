@@ -43,10 +43,28 @@ class OffProduct {
   }
 }
 
+/// Resultado de la búsqueda de texto (Search-a-licious). Solo trae los
+/// datos de listado; los macros se consultan al seleccionar el producto.
+class OffSearchResult {
+  const OffSearchResult({
+    required this.barcode,
+    required this.name,
+    this.brand,
+    this.quantity,
+    this.imageUrl,
+  });
+
+  final String barcode;
+  final String name;
+  final String? brand;
+  final String? quantity;
+  final String? imageUrl;
+}
+
 /// Motivo por el que una consulta a OpenFoodFacts falló: permite
-/// distinguir "sin red" (reintentar) de "el producto no existe" (registrar
-/// manualmente).
-enum OffFailure { network, server }
+/// distinguir "sin red" (reintentar), "servidor saturado" (esperar o
+/// registrar manualmente) de "el producto no existe".
+enum OffFailure { network, server, busy, rateLimited }
 
 class OffException implements Exception {
   const OffException(this.kind, {this.statusCode});
@@ -54,23 +72,40 @@ class OffException implements Exception {
   final OffFailure kind;
   final int? statusCode;
 
-  String get message => kind == OffFailure.network
-      ? 'No se pudo contactar OpenFoodFacts. Revisa tu conexión.'
-      : 'OpenFoodFacts respondió con un error '
-            '(HTTP ${statusCode ?? "desconocido"}).';
+  String get message => switch (kind) {
+    OffFailure.network =>
+      'No se pudo contactar OpenFoodFacts. Revisa tu conexión.',
+    OffFailure.busy =>
+      'El servidor de OpenFoodFacts está temporalmente saturado. '
+          'Intenta de nuevo en unos momentos o usa el registro manual.',
+    OffFailure.rateLimited =>
+      'OpenFoodFacts está limitando las consultas. '
+          'Espera un minuto o usa el registro manual.',
+    OffFailure.server =>
+      'OpenFoodFacts respondió con un error '
+          '(HTTP ${statusCode ?? "desconocido"}).',
+  };
 }
 
 /// Cliente de la API v2 de OpenFoodFacts (no requiere llave).
 /// Requiere un User-Agent identificativo: OFF lo pide para rastrear el
 /// uso de la app (`https://world.openfoodfacts.org/`).
 class OpenFoodFactsService {
-  OpenFoodFactsService({http.Client? client})
-    : _client = client ?? http.Client();
+  OpenFoodFactsService({
+    http.Client? client,
+    this.retryDelay = const Duration(milliseconds: 1500),
+  }) : _client = client ?? http.Client();
 
   /// Instancia compartida: vive toda la sesión de la app.
   static final OpenFoodFactsService shared = OpenFoodFactsService();
 
   final http.Client _client;
+  final Duration retryDelay;
+
+  /// Cachés de sesión: evitan repetir consultas y ayudar a respetar los
+  /// límites de OpenFoodFacts (15 productos/min y 10 búsquedas/min).
+  final Map<String, OffProduct?> _productCache = {};
+  final Map<String, List<OffSearchResult>> _searchCache = {};
 
   /// Devuelve el producto o `null` si no existe. Lanza `OffException`
   /// (red / servidor) para que quien llama muestre el motivo real: el
@@ -78,41 +113,97 @@ class OpenFoodFactsService {
   ///
   /// `throws: OffException`
   Future<OffProduct?> fetchByBarcode(String barcode) async {
+    if (_productCache.containsKey(barcode)) return _productCache[barcode];
     final body = await _fetchBody(
       Uri.https('world.openfoodfacts.org', '/api/v2/product/$barcode.json', {
         'fields': _productFields,
       }),
     );
     final status = body['status'] as int? ?? 0;
-    if (status != 1) return null;
+    if (status != 1) {
+      _productCache[barcode] = null;
+      return null;
+    }
     final product = body['product'];
-    if (product is! Map<String, dynamic>) return null;
-    return parseProduct(product, barcode: barcode);
+    if (product is! Map<String, dynamic>) {
+      _productCache[barcode] = null;
+      return null;
+    }
+    final parsed = parseProduct(product, barcode: barcode);
+    _productCache[barcode] = parsed;
+    return parsed;
   }
 
-  /// Búsqueda libre por nombre/marca. Devuelve hasta `pageSize` productos.
+  /// Búsqueda libre por nombre/marca usando Search-a-licious.
+  ///
+  /// Devuelve hasta 10 resultados con nombre, marca e imagen. Los macros se
+  /// consultan después con [fetchByBarcode] al seleccionar un resultado.
   ///
   /// `throws: OffException`
-  Future<List<OffProduct>> searchProducts(String query) async {
+  Future<List<OffSearchResult>> searchProducts(String query) async {
     final clean = query.trim();
     if (clean.isEmpty) return const [];
+    final cacheKey = clean.toLowerCase();
+    final cached = _searchCache[cacheKey];
+    if (cached != null) return cached;
+
     final body = await _fetchBody(
-      Uri.https('world.openfoodfacts.org', '/cgi/search.pl', {
-        'search_terms': clean,
-        'search_simple': '1',
-        'action': 'process',
-        'json': '1',
-        'page_size': '20',
-        'fields': 'code,$_productFields',
+      Uri.https('search.openfoodfacts.org', '/search', {
+        'q': clean,
+        'page_size': '10',
+        'langs': 'es,en',
+        'fields':
+            'code,product_name,product_name_es,generic_name,'
+            'generic_name_es,brands,quantity,image_front_url,'
+            'image_front_small_url',
       }),
     );
-    final products = body['products'];
-    if (products is! List) return const [];
-    return [
-      for (final p in products)
-        if (p is Map<String, dynamic>)
-          parseProduct(p, barcode: p['code']?.toString() ?? ''),
-    ].whereType<OffProduct>().toList();
+    final hits = body['hits'];
+    if (hits is! List) return const [];
+
+    final results = <OffSearchResult>[];
+    final seen = <String>{};
+    for (final hit in hits) {
+      if (hit is! Map<String, dynamic>) continue;
+      final barcode = hit['code']?.toString().trim() ?? '';
+      if (barcode.isEmpty || !seen.add(barcode)) continue;
+      final name = _cleanText(
+        hit['product_name_es'] ??
+            hit['product_name'] ??
+            hit['generic_name_es'] ??
+            hit['generic_name'],
+      );
+      if (name.isEmpty) continue;
+      final quantity = _cleanText(hit['quantity']);
+      final image = hit['image_front_url'] ?? hit['image_front_small_url'];
+      results.add(
+        OffSearchResult(
+          barcode: barcode,
+          name: name,
+          brand: _brandName(hit['brands']),
+          quantity: quantity.isEmpty ? null : quantity,
+          imageUrl: image is String && image.trim().isNotEmpty
+              ? image.trim()
+              : null,
+        ),
+      );
+      if (results.length >= 10) break;
+    }
+    _searchCache[cacheKey] = results;
+    return results;
+  }
+
+  static String _cleanText(Object? value) =>
+      (value ?? '').toString().replaceAll(RegExp(r'\s+'), ' ').trim();
+
+  static String? _brandName(Object? value) {
+    if (value is List) {
+      final brands = value.map(_cleanText).where((b) => b.isNotEmpty);
+      final joined = brands.join(', ');
+      return joined.isEmpty ? null : joined;
+    }
+    final brand = _cleanText(value);
+    return brand.isEmpty ? null : brand;
   }
 
   static const _productFields =
@@ -121,18 +212,27 @@ class OpenFoodFactsService {
       'proteins_100g,proteins_serving,carbohydrates_100g,carbohydrates_serving,'
       'fat_100g,fat_serving';
 
-  static const _userAgent = 'Macrobuddy - Flutter App - Version 1.0';
+  static const _userAgent = 'MacrobuddyApp/1.0 (maicoalf77@gmail.com)';
+  static const _requestHeaders = {
+    'User-Agent': _userAgent,
+    'Accept': 'application/json',
+  };
+  static const _maxRetries = 1;
 
   Future<Map<String, dynamic>> _fetchBody(Uri uri) async {
     http.Response res;
-    try {
-      res = await _client
-          .get(uri, headers: const {'User-Agent': _userAgent})
-          .timeout(const Duration(seconds: 15));
-    } on TimeoutException {
-      throw const OffException(OffFailure.network);
-    } catch (_) {
-      throw const OffException(OffFailure.network);
+    var attempt = 0;
+    while (true) {
+      res = await _get(uri);
+      if (!_isRetryable(res.statusCode) || attempt >= _maxRetries) break;
+      attempt++;
+      await Future<void>.delayed(retryDelay);
+    }
+    if (res.statusCode == 429) {
+      throw OffException(OffFailure.rateLimited, statusCode: 429);
+    }
+    if (res.statusCode == 503 || res.statusCode == 504) {
+      throw OffException(OffFailure.busy, statusCode: res.statusCode);
     }
     if (res.statusCode != 200) {
       throw OffException(OffFailure.server, statusCode: res.statusCode);
@@ -142,6 +242,27 @@ class OpenFoodFactsService {
     } catch (_) {
       throw const OffException(OffFailure.server, statusCode: 200);
     }
+  }
+
+  Future<http.Response> _get(Uri uri) async {
+    try {
+      return await _client
+          .get(uri, headers: _requestHeaders)
+          .timeout(const Duration(seconds: 15));
+    } on TimeoutException {
+      throw const OffException(OffFailure.network);
+    } catch (_) {
+      throw const OffException(OffFailure.network);
+    }
+  }
+
+  static bool _isRetryable(int statusCode) =>
+      statusCode == 429 || statusCode == 503 || statusCode == 504;
+
+  /// Limpia las cachés en memoria (útil al cambiar de red o en pruebas).
+  void clearCache() {
+    _productCache.clear();
+    _searchCache.clear();
   }
 
   /// Parseo público para pruebas y flujos que ya tienen el JSON del

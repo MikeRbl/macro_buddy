@@ -5,15 +5,14 @@ import '../../theme/app_theme.dart';
 import 'barcode_scanner_screen.dart';
 import 'nutrition_entry_sheets.dart';
 
-/// Flujo completo de escaneo: cámara → OpenFoodFacts (ya resuelto dentro
-/// del escáner) → hoja de registro con el producto o manual.
-/// Lo usan el FAB de Nutrición, la búsqueda y el atajo "Escanear comida".
-Future<void> scanFoodFlow(BuildContext context) async {
-  final result = await Navigator.of(context).push<BarcodeScanResult>(
-    MaterialPageRoute(builder: (_) => const BarcodeScannerScreen()),
-  );
-  if (result == null || !context.mounted) return;
-
+/// Procesa un resultado del escáner con el mismo comportamiento en todos
+/// los puntos de entrada: error de red/servidor, producto inexistente o
+/// producto encontrado.
+Future<void> handleScanResult(
+  BuildContext context,
+  BarcodeScanResult result, {
+  String? time,
+}) async {
   if (result.error != null) {
     // Fallo de red / servidor en OFF: NO es "no existe"; no abre el
     // registro manual para que la causa no se confunda.
@@ -40,7 +39,7 @@ Future<void> scanFoodFlow(BuildContext context) async {
       ),
     );
   }
-  showManualEntrySheet(
+  await showManualEntrySheet(
     context,
     product:
         result.product ??
@@ -53,5 +52,17 @@ Future<void> scanFoodFlow(BuildContext context) async {
           fats: 0,
           per100g: true,
         ),
+    time: time,
   );
+}
+
+/// Flujo completo de escaneo: cámara → OpenFoodFacts (ya resuelto dentro
+/// del escáner) → hoja de registro con el producto o manual.
+/// Lo usan el FAB de Nutrición, la búsqueda y el atajo "Escanear comida".
+Future<void> scanFoodFlow(BuildContext context) async {
+  final result = await Navigator.of(context).push<BarcodeScanResult>(
+    MaterialPageRoute(builder: (_) => const BarcodeScannerScreen()),
+  );
+  if (result == null || !context.mounted) return;
+  await handleScanResult(context, result);
 }

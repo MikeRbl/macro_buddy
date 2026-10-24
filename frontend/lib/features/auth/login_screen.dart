@@ -123,7 +123,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 onPressed: _goToRegister,
                 child: const Text('¿No tienes cuenta? Regístrate'),
               ),
-              // Configuración viva del servidor (útil con APK física).
+              // Cambio de servidor en runtime con teclado completo.
               TextButton(
                 onPressed: _showServerDialog,
                 child: Text(
@@ -143,63 +143,103 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     );
   }
 
-  /// Diálogo para cambiar la base URL del backend en runtime: clave para
-  /// probar el APK en un dispositivo físico contra la IP local del PC.
+  /// Diálogo para cambiar la URL del backend en runtime.
+  /// Usa teclado de texto completo para poder escribir `http://` y `:3000`.
   Future<void> _showServerDialog() async {
     final controller = TextEditingController(text: ApiConfig.baseUrl);
+    String? error;
+
     final saved = await showDialog<bool>(
       context: context,
-      builder: (dialogCtx) => AlertDialog(
-        backgroundColor: ThemeColors.dark.card,
-        title: Text(
-          'Servidor',
-          style: TextStyle(
-            color: ThemeColors.dark.textPrimary,
-            fontSize: 18,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-        content: TextField(
-          controller: controller,
-          keyboardType: const TextInputType.numberWithOptions(signed: true),
-          autocorrect: false,
-          decoration: InputDecoration(
-            hintText: '192.168.100.19',
-            labelText: 'IP del servidor',
-            labelStyle: TextStyle(color: ThemeColors.dark.textSecondary),
-            fillColor: ThemeColors.dark.input,
-            filled: true,
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide.none,
+      builder: (dialogCtx) => StatefulBuilder(
+        builder: (dialogCtx, setDialogState) => AlertDialog(
+          scrollable: true,
+          backgroundColor: ThemeColors.dark.card,
+          title: Text(
+            'Servidor',
+            style: TextStyle(
+              color: ThemeColors.dark.textPrimary,
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
             ),
           ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              TextField(
+                controller: controller,
+                keyboardType: TextInputType.text,
+                autocorrect: false,
+                enableSuggestions: false,
+                textCapitalization: TextCapitalization.none,
+                textInputAction: TextInputAction.done,
+                decoration: InputDecoration(
+                  hintText: 'http://192.168.1.10:3000',
+                  labelText: 'IP o URL del servidor',
+                  helperText: 'Ej. 192.168.1.10 o http://192.168.1.10:3000',
+                  helperMaxLines: 2,
+                  labelStyle: TextStyle(color: ThemeColors.dark.textSecondary),
+                  fillColor: ThemeColors.dark.input,
+                  filled: true,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide.none,
+                  ),
+                ),
+              ),
+              if (error != null) ...[
+                const SizedBox(height: 8),
+                Text(
+                  error!,
+                  style: const TextStyle(color: AppColors.danger, fontSize: 12),
+                ),
+              ],
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () async {
+                await ApiConfig.resetBaseUrl();
+                if (!dialogCtx.mounted) return;
+                Navigator.of(dialogCtx).pop(true);
+              },
+              child: const Text('Usar localhost'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(dialogCtx).pop(false),
+              child: const Text('Cancelar'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                final ok = await ApiConfig.setBaseUrl(controller.text);
+                if (!dialogCtx.mounted) return;
+                if (!ok) {
+                  setDialogState(() {
+                    error = 'URL inválida. Ejemplo: http://192.168.1.10:3000';
+                  });
+                  return;
+                }
+                Navigator.of(dialogCtx).pop(true);
+              },
+              child: const Text('Guardar'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogCtx).pop(false),
-            child: const Text('Cancelar'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.of(dialogCtx).pop(true),
-            child: const Text('Guardar'),
-          ),
-        ],
       ),
     );
-    if (saved == true) {
-      await ApiConfig.setBaseUrl(controller.text);
-      if (!mounted) return;
-      setState(() {});
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          backgroundColor: ThemeColors.dark.card,
-          content: Text(
-            'Servidor actualizado: ${ApiConfig.baseUrl}',
-            style: TextStyle(color: ThemeColors.dark.textPrimary),
-          ),
+
+    controller.dispose();
+    if (!mounted || saved != true) return;
+    setState(() {});
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        backgroundColor: ThemeColors.dark.card,
+        content: Text(
+          'Servidor actualizado: ${ApiConfig.baseUrl}',
+          style: TextStyle(color: ThemeColors.dark.textPrimary),
         ),
-      );
-    }
+      ),
+    );
   }
 }

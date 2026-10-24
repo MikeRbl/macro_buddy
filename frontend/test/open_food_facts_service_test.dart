@@ -1,9 +1,185 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 
 import 'package:macrobuddy/core/services/open_food_facts_service.dart';
 
 void main() {
   final service = OpenFoodFactsService();
+
+  group('OpenFoodFacts HTTP', () {
+    test('envía User-Agent al producto y no auth', () async {
+      late http.Request captured;
+      final client = MockClient((request) async {
+        captured = request;
+        return http.Response(jsonEncode({'status': 0}), 200);
+      });
+      final httpService = OpenFoodFactsService(client: client);
+
+      expect(await httpService.fetchByBarcode('12345678'), isNull);
+
+      expect(captured.url.host, 'world.openfoodfacts.org');
+      expect(captured.url.path, '/api/v2/product/12345678.json');
+      expect(
+        captured.headers['User-Agent'],
+        'MacrobuddyApp/1.0 (maicoalf77@gmail.com)',
+      );
+      expect(captured.headers.containsKey('Authorization'), isFalse);
+    });
+
+    test('la búsqueda por texto usa Search-a-licious', () async {
+      late http.Request captured;
+      final client = MockClient((request) async {
+        captured = request;
+        return http.Response(
+          jsonEncode({
+            'hits': [
+              {
+                'code': '12345678',
+                'product_name_es': 'Leche entera',
+                'brands': ['Marca', 'Otra'],
+                'quantity': '1 l',
+                'image_front_url': 'https://example.com/leche.jpg',
+              },
+            ],
+          }),
+          200,
+        );
+      });
+      final httpService = OpenFoodFactsService(client: client);
+
+      final results = await httpService.searchProducts('leche');
+
+      expect(results, hasLength(1));
+      expect(results.first.barcode, '12345678');
+      expect(results.first.name, 'Leche entera');
+      expect(results.first.brand, 'Marca, Otra');
+      expect(results.first.quantity, '1 l');
+      expect(results.first.imageUrl, 'https://example.com/leche.jpg');
+      expect(captured.url.host, 'search.openfoodfacts.org');
+      expect(captured.url.path, '/search');
+      expect(captured.url.queryParameters['q'], 'leche');
+      expect(captured.url.queryParameters['page_size'], '10');
+      expect(captured.url.queryParameters['langs'], 'es,en');
+      expect(captured.url.queryParameters['fields'], contains('code'));
+      expect(
+        captured.headers['User-Agent'],
+        'MacrobuddyApp/1.0 (maicoalf77@gmail.com)',
+      );
+      expect(captured.headers.containsKey('Authorization'), isFalse);
+    });
+
+    test('ignora hits sin código o nombre y deduplica', () async {
+      final client = MockClient((_) async {
+        return http.Response(
+          jsonEncode({
+            'hits': [
+              {'code': '1', 'product_name': 'Uno'},
+              {'code': '1', 'product_name': 'Duplicado'},
+              {'code': '', 'product_name': 'Sin código'},
+              {'code': '2', 'product_name': '  '},
+              {'code': '3', 'generic_name': 'Tres'},
+            ],
+          }),
+          200,
+        );
+      });
+      final results = await OpenFoodFactsService(
+        client: client,
+      ).searchProducts('x');
+
+      expect(results.map((r) => r.barcode), ['1', '3']);
+      expect(results.last.name, 'Tres');
+    });
+
+    test('cachea productos por código', () async {
+      var calls = 0;
+      final client = MockClient((_) async {
+        calls++;
+        return http.Response(
+          jsonEncode({'status': 1, 'product': _per100}),
+          200,
+        );
+      });
+      final httpService = OpenFoodFactsService(client: client);
+
+      final first = await httpService.fetchByBarcode('1');
+      final second = await httpService.fetchByBarcode('1');
+
+      expect(first, isNotNull);
+      expect(second, same(first));
+      expect(calls, 1);
+    });
+
+    test('cachea búsquedas por texto', () async {
+      var calls = 0;
+      final client = MockClient((_) async {
+        calls++;
+        return http.Response(jsonEncode({'hits': []}), 200);
+      });
+      final httpService = OpenFoodFactsService(client: client);
+
+      await httpService.searchProducts('leche');
+      await httpService.searchProducts('  LECHE  ');
+
+      expect(calls, 1);
+    });
+
+    test('mapea 503 a saturación con el mensaje para el usuario', () async {
+      final client = MockClient((_) async => http.Response('', 503));
+      final httpService = OpenFoodFactsService(
+        client: client,
+        retryDelay: Duration.zero,
+      );
+
+      await expectLater(
+        httpService.fetchByBarcode('12345678'),
+        throwsA(
+          isA<OffException>()
+              .having((e) => e.kind, 'kind', OffFailure.busy)
+              .having(
+                (e) => e.message,
+                'message',
+                contains('temporalmente saturado'),
+              ),
+        ),
+      );
+    });
+
+    test('mapea 504 a saturación', () async {
+      final client = MockClient((_) async => http.Response('', 504));
+      final httpService = OpenFoodFactsService(
+        client: client,
+        retryDelay: Duration.zero,
+      );
+
+      await expectLater(
+        httpService.fetchByBarcode('12345678'),
+        throwsA(
+          isA<OffException>().having((e) => e.kind, 'kind', OffFailure.busy),
+        ),
+      );
+    });
+
+    test('mapea 429 a límite de consultas', () async {
+      final client = MockClient((_) async => http.Response('', 429));
+      final httpService = OpenFoodFactsService(
+        client: client,
+        retryDelay: Duration.zero,
+      );
+
+      await expectLater(
+        httpService.fetchByBarcode('12345678'),
+        throwsA(
+          isA<OffException>()
+              .having((e) => e.kind, 'kind', OffFailure.rateLimited)
+              .having((e) => e.message, 'message', contains('limitando')),
+        ),
+      );
+    });
+  });
 
   group('OpenFoodFacts parseProduct', () {
     test('prioriza los valores declarados por 100 g', () {
@@ -89,10 +265,7 @@ const _perServing = {
 const _perServingWithoutKcal = {
   'product_name': 'Sin kcal de porción declarada',
   'nutrition_data_per': 'serving',
-  'nutriments': {
-    'energy_100g': 237,
-    'proteins_100g': 3.4,
-  },
+  'nutriments': {'energy_100g': 237, 'proteins_100g': 3.4},
 };
 
 const _kilojoulesOnly = {
@@ -110,8 +283,5 @@ const _noMacros = {
 const _garbled = {
   'product_name': 'Valores corruptos',
   'nutrition_data_per': '100g',
-  'nutriments': {
-    'energy-kcal_100g': 'NaN',
-    'proteins_100g': 'oops',
-  },
+  'nutriments': {'energy-kcal_100g': 'NaN', 'proteins_100g': 'oops'},
 };

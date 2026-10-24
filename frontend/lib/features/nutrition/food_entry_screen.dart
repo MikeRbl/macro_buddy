@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -8,6 +6,7 @@ import '../../core/models/nutrition.dart';
 import '../../core/services/open_food_facts_service.dart';
 import '../../theme/app_theme.dart';
 import '../../core/widgets/mb_icon.dart';
+import 'barcode_scan_panel.dart';
 import 'nutrition_entry_sheets.dart';
 import 'nutrition_provider.dart';
 import 'scan_food_flow.dart';
@@ -139,13 +138,15 @@ class FoodEntryScreen extends ConsumerStatefulWidget {
 
 class _FoodEntryScreenState extends ConsumerState<FoodEntryScreen> {
   final _searchController = TextEditingController();
-  Timer? _debounce;
-  List<OffProduct> _results = const [];
+  List<OffSearchResult> _results = const [];
+  final _loadedProducts = <String, OffProduct>{};
+  final _loadingProducts = <String>{};
   bool _loading = false;
   String? _error;
   late FoodEntryMode _mode;
   late String _time;
   final _selection = <String, _Pick>{};
+  final _scanPanelKey = GlobalKey<BarcodeScanPanelState>();
 
   @override
   void initState() {
@@ -157,7 +158,6 @@ class _FoodEntryScreenState extends ConsumerState<FoodEntryScreen> {
   @override
   void dispose() {
     _searchController.dispose();
-    _debounce?.cancel();
     super.dispose();
   }
 
@@ -167,43 +167,86 @@ class _FoodEntryScreenState extends ConsumerState<FoodEntryScreen> {
     return target - (widget.calorieConsumed ?? 0);
   }
 
-  void _onQueryChanged(String value) {
-    _debounce?.cancel();
-    _debounce = Timer(const Duration(milliseconds: 400), () async {
-      final query = value.trim();
-      if (query.isEmpty) {
-        if (mounted) {
-          setState(() {
-            _results = const [];
-            _error = null;
-            _loading = false;
-          });
-        }
+  Future<void> _runSearch() async {
+    final query = _searchController.text.trim();
+    if (query.length < 2) {
+      setState(() {
+        _results = const [];
+        _loading = false;
+        _error = 'Escribe al menos 2 caracteres.';
+      });
+      return;
+    }
+    if (_loading) return;
+    FocusScope.of(context).unfocus();
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final results = await OpenFoodFactsService.shared.searchProducts(query);
+      if (!mounted) return;
+      setState(() {
+        _results = results;
+        _loading = false;
+        _error = results.isEmpty ? 'Sin resultados para "$query".' : null;
+      });
+    } on OffException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = e.message;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = 'No se pudo contactar OpenFoodFacts. Revisa tu conexión.';
+      });
+    }
+  }
+
+  Future<void> _selectSearchResult(OffSearchResult result) async {
+    final barcode = result.barcode;
+    if (barcode.isEmpty) return;
+    final loaded = _loadedProducts[barcode];
+    if (loaded != null) {
+      final pick = _pickFromProduct(loaded);
+      if (pick != null) _togglePick(pick);
+      return;
+    }
+    if (_loadingProducts.contains(barcode)) return;
+    setState(() => _loadingProducts.add(barcode));
+    try {
+      final product = await OpenFoodFactsService.shared.fetchByBarcode(barcode);
+      if (!mounted) return;
+      setState(() => _loadingProducts.remove(barcode));
+      if (product == null) {
+        _showMessage(
+          'Sin datos nutricionales para "${result.name}". '
+          'Regístralo manualmente.',
+        );
         return;
       }
-      setState(() => _loading = true);
-      try {
-        final results = await OpenFoodFactsService.shared.searchProducts(query);
-        if (!mounted) return;
-        setState(() {
-          _results = results;
-          _loading = false;
-          _error = results.isEmpty ? 'Sin resultados para "$query".' : null;
-        });
-      } on OffException catch (e) {
-        if (!mounted) return;
-        setState(() {
-          _loading = false;
-          _error = e.message;
-        });
-      } catch (_) {
-        if (!mounted) return;
-        setState(() {
-          _loading = false;
-          _error = 'No se pudo contactar OpenFoodFacts. Revisa tu conexión.';
-        });
-      }
-    });
+      setState(() => _loadedProducts[barcode] = product);
+      final pick = _pickFromProduct(product);
+      if (pick != null) _togglePick(pick);
+    } on OffException catch (e) {
+      if (!mounted) return;
+      setState(() => _loadingProducts.remove(barcode));
+      _showMessage(e.message);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _loadingProducts.remove(barcode));
+      _showMessage('No se pudo contactar OpenFoodFacts. Revisa tu conexión.');
+    }
+  }
+
+  void _showMessage(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   void _togglePick(_Pick pick) {
@@ -230,6 +273,14 @@ class _FoodEntryScreenState extends ConsumerState<FoodEntryScreen> {
     });
   }
 
+  Future<void> _handleScan(BarcodeScanResult result) async {
+    await handleScanResult(context, result, time: _time);
+    if (!mounted) return;
+    // Al cerrar la hoja de registro, la cámara vuelve a estar lista para
+    // escanear otro producto.
+    _scanPanelKey.currentState?.resume();
+  }
+
   Future<void> _confirmSelection() async {
     final picks = _selection.values.toList();
     if (picks.isEmpty) return;
@@ -237,7 +288,6 @@ class _FoodEntryScreenState extends ConsumerState<FoodEntryScreen> {
       for (final p in picks)
         p.key: TextEditingController(text: _fmt(p.basisGrams)),
     };
-    final safe = MediaQuery.paddingOf(context).bottom;
     final confirmed = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
@@ -246,117 +296,123 @@ class _FoodEntryScreenState extends ConsumerState<FoodEntryScreen> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       builder: (sheetCtx) => StatefulBuilder(
-        builder: (sheetCtx, setSheetState) => Padding(
-          padding: EdgeInsets.fromLTRB(16, 16, 16, 16 + safe),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      'Registrar ${picks.length} '
-                      '${picks.length == 1 ? 'alimento' : 'alimentos'}',
-                      style: TextStyle(
-                        color: ThemeColors.dark.textPrimary,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ),
-                  Text(
-                    formatTime12h(_time),
-                    style: TextStyle(
-                      color: AppColors.secondaryCyan,
-                      fontSize: 13,
-                    ).merge(AppTypography.numeric),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Flexible(
-                child: ListView(
-                  shrinkWrap: true,
+        builder: (sheetCtx, setSheetState) {
+          final safe = MediaQuery.paddingOf(sheetCtx).bottom;
+          final keyboard = MediaQuery.viewInsetsOf(sheetCtx).bottom;
+          return AnimatedPadding(
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeOut,
+            padding: EdgeInsets.fromLTRB(16, 16, 16, 16 + safe + keyboard),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
                   children: [
-                    for (final p in picks)
-                      Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 4),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              flex: 3,
-                              child: Text(
-                                p.name,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  color: ThemeColors.dark.textPrimary,
-                                  fontSize: 14,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              flex: 2,
-                              child: Text(
-                                '${p.calories.round()} kcal / '
-                                '${_fmt(p.basisGrams)} g',
-                                style: TextStyle(
-                                  color: ThemeColors.dark.textSecondary,
-                                  fontSize: 11,
-                                ).merge(AppTypography.numeric),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: TextField(
-                                controller: controllers[p.key],
-                                keyboardType:
-                                    const TextInputType.numberWithOptions(
-                                      decimal: true,
-                                    ),
-                                inputFormatters: [
-                                  FilteringTextInputFormatter.allow(
-                                    RegExp(r'^\d*[.,]?\d*'),
-                                  ),
-                                ],
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  color: ThemeColors.dark.textPrimary,
-                                ).merge(AppTypography.numeric),
-                                decoration: InputDecoration(
-                                  isDense: true,
-                                  filled: true,
-                                  fillColor: ThemeColors.dark.input,
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                    borderSide: BorderSide.none,
-                                  ),
-                                ),
-                              ),
-                            ),
-                            Text(
-                              ' g',
-                              style: TextStyle(
-                                color: ThemeColors.dark.textSecondary,
-                                fontSize: 12,
-                              ),
-                            ),
-                          ],
+                    Expanded(
+                      child: Text(
+                        'Registrar ${picks.length} '
+                        '${picks.length == 1 ? 'alimento' : 'alimentos'}',
+                        style: TextStyle(
+                          color: ThemeColors.dark.textPrimary,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w800,
                         ),
                       ),
+                    ),
+                    Text(
+                      formatTime12h(_time),
+                      style: TextStyle(
+                        color: AppColors.secondaryCyan,
+                        fontSize: 13,
+                      ).merge(AppTypography.numeric),
+                    ),
                   ],
                 ),
-              ),
-              const SizedBox(height: 16),
-              ElevatedButton(
-                onPressed: () => Navigator.of(sheetCtx).pop(true),
-                child: const Text('Registrar alimentos'),
-              ),
-            ],
-          ),
-        ),
+                const SizedBox(height: 12),
+                Flexible(
+                  child: ListView(
+                    shrinkWrap: true,
+                    children: [
+                      for (final p in picks)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 4),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                flex: 3,
+                                child: Text(
+                                  p.name,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    color: ThemeColors.dark.textPrimary,
+                                    fontSize: 14,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                flex: 2,
+                                child: Text(
+                                  '${p.calories.round()} kcal / '
+                                  '${_fmt(p.basisGrams)} g',
+                                  style: TextStyle(
+                                    color: ThemeColors.dark.textSecondary,
+                                    fontSize: 11,
+                                  ).merge(AppTypography.numeric),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: TextField(
+                                  controller: controllers[p.key],
+                                  keyboardType:
+                                      const TextInputType.numberWithOptions(
+                                        decimal: true,
+                                      ),
+                                  inputFormatters: [
+                                    FilteringTextInputFormatter.allow(
+                                      RegExp(r'^\d*[.,]?\d*'),
+                                    ),
+                                  ],
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    color: ThemeColors.dark.textPrimary,
+                                  ).merge(AppTypography.numeric),
+                                  decoration: InputDecoration(
+                                    isDense: true,
+                                    filled: true,
+                                    fillColor: ThemeColors.dark.input,
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                      borderSide: BorderSide.none,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              Text(
+                                ' g',
+                                style: TextStyle(
+                                  color: ThemeColors.dark.textSecondary,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                ElevatedButton(
+                  onPressed: () => Navigator.of(sheetCtx).pop(true),
+                  child: const Text('Registrar alimentos'),
+                ),
+              ],
+            ),
+          );
+        },
       ),
     );
     if (confirmed != true) {
@@ -408,199 +464,225 @@ class _FoodEntryScreenState extends ConsumerState<FoodEntryScreen> {
       ref.watch(nutritionHistoryProvider(30)).value ?? const [],
     );
 
+    final keyboard = MediaQuery.viewInsetsOf(context).bottom;
+
     return Scaffold(
+      resizeToAvoidBottomInset: true,
       body: Stack(
         children: [
           SafeArea(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // Top bar: fila 1 = cierre + título (sin colisiones); fila
-                // 2 = píldora de hora + kcal restantes.
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          IconButton(
-                            onPressed: () => Navigator.of(context).maybePop(),
-                            icon: Icon(Icons.close, color: c.textPrimary),
-                          ),
-                          const SizedBox(width: 4),
-                          Expanded(
-                            child: Text(
-                              'Ingresar alimento',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                color: c.textPrimary,
-                                fontSize: 20,
-                                fontWeight: FontWeight.w800,
+            child: SingleChildScrollView(
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              padding: EdgeInsets.only(bottom: _selection.isNotEmpty ? 96 : 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // Top bar: fila 1 = cierre + título (sin colisiones); fila
+                  // 2 = píldora de hora + kcal restantes.
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            IconButton(
+                              onPressed: () => Navigator.of(context).maybePop(),
+                              icon: Icon(Icons.close, color: c.textPrimary),
+                            ),
+                            const SizedBox(width: 4),
+                            Expanded(
+                              child: Text(
+                                'Ingresar alimento',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: c.textPrimary,
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.w800,
+                                ),
                               ),
                             ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 4),
-                      Row(
-                        children: [
-                          _TopPill(
-                            onTap: _pickTime,
-                            child: Row(
-                              children: [
-                                Icon(
-                                  Icons.access_time,
-                                  size: 14,
-                                  color: AppColors.secondaryCyan,
-                                ),
-                                const SizedBox(width: 4),
-                                Text(
-                                  formatTime12h(_time),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        Row(
+                          children: [
+                            _TopPill(
+                              onTap: _pickTime,
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    Icons.access_time,
+                                    size: 14,
+                                    color: AppColors.secondaryCyan,
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    formatTime12h(_time),
+                                    style: TextStyle(
+                                      color: c.textPrimary,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                    ).merge(AppTypography.numeric),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            if (widget.calorieTarget != null)
+                              _TopPill(
+                                child: Text(
+                                  '${_remaining.round()} kcal restantes',
                                   style: TextStyle(
-                                    color: c.textPrimary,
+                                    color: _remaining <= 0
+                                        ? AppColors.warningAmber
+                                        : AppColors.primaryCoral,
                                     fontSize: 12,
                                     fontWeight: FontWeight.w600,
                                   ).merge(AppTypography.numeric),
                                 ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          if (widget.calorieTarget != null)
-                            _TopPill(
-                              child: Text(
-                                '${_remaining.round()} kcal restantes',
-                                style: TextStyle(
-                                  color: _remaining <= 0
-                                      ? AppColors.warningAmber
-                                      : AppColors.primaryCoral,
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
-                                ).merge(AppTypography.numeric),
                               ),
-                            ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 12),
-                // Píldoras de modo: solo Escanear y Búsqueda.
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Row(
-                    children: [
-                      _ModePill(
-                        icon: MbIcon(
-                          MbAssets.scanBarcode,
-                          size: 16,
-                          color: AppColors.secondaryCyan,
+                          ],
                         ),
-                        label: 'Escanear',
-                        active: _mode == FoodEntryMode.scan,
-                        accent: AppColors.secondaryCyan,
-                        onTap: () async {
-                          setState(() => _mode = FoodEntryMode.scan);
-                          await scanFoodFlow(context);
-                        },
-                      ),
-                      const SizedBox(width: 8),
-                      _ModePill(
-                        icon: const Icon(
-                          Icons.search,
-                          size: 16,
-                          color: AppColors.primaryCoral,
-                        ),
-                        label: 'Búsqueda',
-                        active: _mode == FoodEntryMode.search,
-                        accent: AppColors.primaryCoral,
-                        onTap: () =>
-                            setState(() => _mode = FoodEntryMode.search),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 12),
-                // Buscador.
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: TextField(
-                    controller: _searchController,
-                    onChanged: _onQueryChanged,
-                    textInputAction: TextInputAction.search,
-                    decoration: InputDecoration(
-                      hintText: 'Buscar un alimento, marca o receta...',
-                      filled: true,
-                      fillColor: ThemeColors.dark.input,
-                      border: const OutlineInputBorder(
-                        borderRadius: BorderRadius.all(Radius.circular(14)),
-                        borderSide: BorderSide.none,
-                      ),
-                      prefixIcon: const Icon(
-                        Icons.search,
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                if (favorites.isNotEmpty) ...[
-                  const _SectionLabel('TUS FRECUENTES (30 DÍAS)'),
-                  SizedBox(
-                    height: 40,
-                    child: ListView.separated(
-                      scrollDirection: Axis.horizontal,
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      itemCount: favorites.length,
-                      separatorBuilder: (_, _) => const SizedBox(width: 8),
-                      itemBuilder: (context, i) {
-                        final p = favorites[i];
-                        final selected = _selection.containsKey(p.key);
-                        return FilterChip(
-                          label: Text(
-                            '${p.name} · ${p.calories.round()} kcal',
-                            style: TextStyle(
-                              color: selected
-                                  ? AppColors.inkOnAccent
-                                  : c.textPrimary,
-                              fontSize: 12,
-                            ),
-                          ),
-                          selected: selected,
-                          selectedColor: AppColors.primaryCoral,
-                          backgroundColor: c.input,
-                          checkmarkColor: AppColors.inkOnAccent,
-                          side: BorderSide(
-                            color: selected ? AppColors.primaryCoral : c.border,
-                          ),
-                          onSelected: (_) => _togglePick(p),
-                        );
-                      },
+                      ],
                     ),
                   ),
                   const SizedBox(height: 12),
-                ],
-                const _SectionLabel('RESULTADOS'),
-                Expanded(child: _buildResults()),
-                TextButton(
-                  onPressed: () => showManualEntrySheet(context, time: _time),
-                  child: Text(
-                    '¿No lo encuentras? Regístralo manualmente',
-                    style: TextStyle(color: c.textSecondary, fontSize: 13),
+                  // Píldoras de modo: solo Escanear y Búsqueda.
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Row(
+                      children: [
+                        _ModePill(
+                          icon: MbIcon(
+                            MbAssets.scanBarcode,
+                            size: 16,
+                            color: AppColors.secondaryCyan,
+                          ),
+                          label: 'Escanear',
+                          active: _mode == FoodEntryMode.scan,
+                          accent: AppColors.secondaryCyan,
+                          onTap: () =>
+                              setState(() => _mode = FoodEntryMode.scan),
+                        ),
+                        const SizedBox(width: 8),
+                        _ModePill(
+                          icon: const Icon(
+                            Icons.search,
+                            size: 16,
+                            color: AppColors.primaryCoral,
+                          ),
+                          label: 'Búsqueda',
+                          active: _mode == FoodEntryMode.search,
+                          accent: AppColors.primaryCoral,
+                          onTap: () =>
+                              setState(() => _mode = FoodEntryMode.search),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-                SizedBox(height: 16),
-              ],
+                  const SizedBox(height: 12),
+                  if (_mode == FoodEntryMode.scan)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: BarcodeScanPanel(
+                        key: _scanPanelKey,
+                        onResult: _handleScan,
+                      ),
+                    )
+                  else ...[
+                    // Buscador.
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: TextField(
+                        controller: _searchController,
+                        textInputAction: TextInputAction.search,
+                        onSubmitted: (_) => _runSearch(),
+                        decoration: InputDecoration(
+                          hintText: 'Buscar un alimento, marca o receta...',
+                          filled: true,
+                          fillColor: ThemeColors.dark.input,
+                          border: const OutlineInputBorder(
+                            borderRadius: BorderRadius.all(Radius.circular(14)),
+                            borderSide: BorderSide.none,
+                          ),
+                          prefixIcon: const Icon(
+                            Icons.search,
+                            color: AppColors.textSecondary,
+                          ),
+                          suffixIcon: IconButton(
+                            tooltip: 'Buscar',
+                            onPressed: _loading ? null : _runSearch,
+                            icon: const Icon(
+                              Icons.arrow_forward,
+                              color: AppColors.primaryCoral,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    if (favorites.isNotEmpty) ...[
+                      const _SectionLabel('TUS FRECUENTES (30 DÍAS)'),
+                      SizedBox(
+                        height: 40,
+                        child: ListView.separated(
+                          scrollDirection: Axis.horizontal,
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          itemCount: favorites.length,
+                          separatorBuilder: (_, _) => const SizedBox(width: 8),
+                          itemBuilder: (context, i) {
+                            final p = favorites[i];
+                            final selected = _selection.containsKey(p.key);
+                            return FilterChip(
+                              label: Text(
+                                '${p.name} · ${p.calories.round()} kcal',
+                                style: TextStyle(
+                                  color: selected
+                                      ? AppColors.inkOnAccent
+                                      : c.textPrimary,
+                                  fontSize: 12,
+                                ),
+                              ),
+                              selected: selected,
+                              selectedColor: AppColors.primaryCoral,
+                              backgroundColor: c.input,
+                              checkmarkColor: AppColors.inkOnAccent,
+                              side: BorderSide(
+                                color: selected
+                                    ? AppColors.primaryCoral
+                                    : c.border,
+                              ),
+                              onSelected: (_) => _togglePick(p),
+                            );
+                          },
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                    ],
+                    const _SectionLabel('RESULTADOS'),
+                    _buildResults(),
+                    TextButton(
+                      onPressed: () =>
+                          showManualEntrySheet(context, time: _time),
+                      child: Text(
+                        '¿No lo encuentras? Regístralo manualmente',
+                        style: TextStyle(color: c.textSecondary, fontSize: 13),
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 16),
+                ],
+              ),
             ),
           ),
-          // Barra de multi-selección.
+          // Barra de multi-selección: flota sobre el teclado.
           if (_selection.isNotEmpty)
             Positioned(
               left: 16,
               right: 16,
-              bottom: 16 + MediaQuery.paddingOf(context).bottom,
+              bottom: 12 + keyboard,
               child: SafeArea(
                 top: false,
                 child: ElevatedButton.icon(
@@ -629,12 +711,16 @@ class _FoodEntryScreenState extends ConsumerState<FoodEntryScreen> {
   Widget _buildResults() {
     const c = ThemeColors.dark;
     if (_loading) {
-      return const Center(
-        child: CircularProgressIndicator(color: AppColors.primaryCoral),
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 32),
+        child: Center(
+          child: CircularProgressIndicator(color: AppColors.primaryCoral),
+        ),
       );
     }
     if (_error != null) {
-      return Center(
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 32),
         child: Text(
           _error!,
           textAlign: TextAlign.center,
@@ -643,27 +729,31 @@ class _FoodEntryScreenState extends ConsumerState<FoodEntryScreen> {
       );
     }
     if (_results.isEmpty) {
-      return Center(
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 32),
         child: Text(
-          'Escribe para buscar en OpenFoodFacts.',
+          'Escribe el nombre y pulsa buscar.',
+          textAlign: TextAlign.center,
           style: TextStyle(color: c.textSecondary, fontSize: 14),
         ),
       );
     }
     return ListView.separated(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
       itemCount: _results.length,
       separatorBuilder: (_, _) => const SizedBox(height: 8),
       itemBuilder: (context, i) {
-        final pick = _pickFromProduct(_results[i]);
-        if (pick == null) return const SizedBox.shrink();
-        return _ProductTile(
-          product: _results[i],
-          pick: pick,
-          selected: _selection.containsKey(pick.key),
-          onToggle: () => _togglePick(pick),
-          onOpenSheet: () =>
-              showManualEntrySheet(context, product: _results[i], time: _time),
+        final result = _results[i];
+        final product = _loadedProducts[result.barcode];
+        final pick = product == null ? null : _pickFromProduct(product);
+        return _SearchResultTile(
+          result: result,
+          product: product,
+          loading: _loadingProducts.contains(result.barcode),
+          selected: pick != null && _selection.containsKey(pick.key),
+          onTap: () => _selectSearchResult(result),
         );
       },
     );
@@ -773,24 +863,40 @@ class _ModePill extends StatelessWidget {
   }
 }
 
-class _ProductTile extends StatelessWidget {
-  const _ProductTile({
+class _SearchResultTile extends StatelessWidget {
+  const _SearchResultTile({
+    required this.result,
     required this.product,
-    required this.pick,
+    required this.loading,
     required this.selected,
-    required this.onToggle,
-    required this.onOpenSheet,
+    required this.onTap,
   });
 
-  final OffProduct product;
-  final _Pick pick;
+  final OffSearchResult result;
+  final OffProduct? product;
+  final bool loading;
   final bool selected;
-  final VoidCallback onToggle;
-  final VoidCallback onOpenSheet;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     const c = ThemeColors.dark;
+    final p = product;
+    final String subtitle;
+    if (loading) {
+      subtitle = 'Cargando macros...';
+    } else if (p != null) {
+      final basis = p.per100g ? 100.0 : (p.servingSizeG ?? 100);
+      subtitle =
+          '${p.calories.round()} kcal · ${p.protein.round()}P · '
+          '${p.carbs.round()}C · ${p.fats.round()}F · ${_fmt(basis)} g';
+    } else {
+      final details = [
+        if (result.brand != null) result.brand!,
+        if (result.quantity != null) result.quantity!,
+      ].join(' · ');
+      subtitle = details.isEmpty ? 'Toca para cargar los macros.' : details;
+    }
     return Container(
       decoration: BoxDecoration(
         color: c.card,
@@ -798,42 +904,47 @@ class _ProductTile extends StatelessWidget {
         border: Border.all(color: selected ? AppColors.primaryCoral : c.border),
       ),
       child: ListTile(
-        onTap: onToggle,
+        onTap: loading ? null : onTap,
         title: Text(
-          product.name,
+          p?.name ?? result.name,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: TextStyle(color: c.textPrimary, fontSize: 15),
         ),
         subtitle: Text(
-          '${product.calories.round()} kcal · ${product.protein.round()}P · '
-          '${product.carbs.round()}C · ${product.fats.round()}F · '
-          '${_fmt(pick.basisGrams)} g',
+          subtitle,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
           style: TextStyle(
             color: c.textSecondary,
             fontSize: 12,
-          ).merge(AppTypography.numeric),
+          ).merge(p != null ? AppTypography.numeric : null),
         ),
-        trailing: InkWell(
-          onTap: onOpenSheet,
-          borderRadius: BorderRadius.circular(14),
-          child: Container(
-            width: 32,
-            height: 32,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: selected ? AppColors.primaryCoral : c.input,
-              border: Border.all(
-                color: selected ? Colors.transparent : c.border,
+        trailing: loading
+            ? const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: AppColors.primaryCoral,
+                ),
+              )
+            : Container(
+                width: 32,
+                height: 32,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: selected ? AppColors.primaryCoral : c.input,
+                  border: Border.all(
+                    color: selected ? Colors.transparent : c.border,
+                  ),
+                ),
+                child: Icon(
+                  selected ? Icons.check : Icons.add,
+                  size: 18,
+                  color: selected ? AppColors.inkOnAccent : c.textSecondary,
+                ),
               ),
-            ),
-            child: Icon(
-              selected ? Icons.check : Icons.edit_outlined,
-              size: 18,
-              color: selected ? AppColors.inkOnAccent : c.textSecondary,
-            ),
-          ),
-        ),
       ),
     );
   }

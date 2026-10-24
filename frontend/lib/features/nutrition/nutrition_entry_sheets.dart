@@ -7,13 +7,13 @@ import '../../core/services/open_food_facts_service.dart';
 import '../../theme/app_theme.dart';
 import 'nutrition_provider.dart';
 
-void showManualEntrySheet(
+Future<void> showManualEntrySheet(
   BuildContext context, {
   OffProduct? product,
   NutritionItem? existing,
   String? time,
 }) {
-  showModalBottomSheet<void>(
+  return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
     backgroundColor: ThemeColors.dark.card,
@@ -52,14 +52,28 @@ class _EntrySheetState extends ConsumerState<_EntrySheet> {
     // [nombre, gramos, kcal, proteína, carbohidratos, grasas]
     _fields = [
       for (final controller in [
-        TextEditingController(text: widget.existing?.name ?? widget.product?.name),
-        TextEditingController(text: _text(widget.existing?.quantityG ?? widget.product?.servingSizeG ?? 100)),
-        TextEditingController(text: _text(widget.existing?.calories ?? widget.product?.calories)),
-        TextEditingController(text: _text(widget.existing?.protein ?? widget.product?.protein)),
-        TextEditingController(text: _text(widget.existing?.carbs ?? widget.product?.carbs)),
-        TextEditingController(text: _text(widget.existing?.fats ?? widget.product?.fats)),
+        TextEditingController(
+          text: widget.existing?.name ?? widget.product?.name,
+        ),
+        TextEditingController(
+          text: _text(
+            widget.existing?.quantityG ?? widget.product?.servingSizeG ?? 100,
+          ),
+        ),
+        TextEditingController(
+          text: _text(widget.existing?.calories ?? widget.product?.calories),
+        ),
+        TextEditingController(
+          text: _text(widget.existing?.protein ?? widget.product?.protein),
+        ),
+        TextEditingController(
+          text: _text(widget.existing?.carbs ?? widget.product?.carbs),
+        ),
+        TextEditingController(
+          text: _text(widget.existing?.fats ?? widget.product?.fats),
+        ),
       ])
-        controller
+        controller,
     ];
   }
 
@@ -98,7 +112,8 @@ class _EntrySheetState extends ConsumerState<_EntrySheet> {
     );
     if (picked == null) return;
     setState(() {
-      _time = '${picked.hour.toString().padLeft(2, '0')}:'
+      _time =
+          '${picked.hour.toString().padLeft(2, '0')}:'
           '${picked.minute.toString().padLeft(2, '0')}';
     });
   }
@@ -144,7 +159,8 @@ class _EntrySheetState extends ConsumerState<_EntrySheet> {
         SnackBar(
           backgroundColor: ThemeColors.dark.card,
           content: Text(
-            ref.read(nutritionProvider).error ?? 'No se pudo guardar el alimento.',
+            ref.read(nutritionProvider).error ??
+                'No se pudo guardar el alimento.',
             style: TextStyle(color: ThemeColors.dark.textPrimary),
           ),
         ),
@@ -156,14 +172,13 @@ class _EntrySheetState extends ConsumerState<_EntrySheet> {
   Widget build(BuildContext context) {
     const c = ThemeColors.dark;
     final safe = MediaQuery.paddingOf(context).bottom;
-    return Padding(
-      padding: EdgeInsets.fromLTRB(
-        16,
-        8,
-        16,
-        16 + safe,
-      ).copyWith(bottom: 16 + safe),
+    final keyboard = MediaQuery.viewInsetsOf(context).bottom;
+    return AnimatedPadding(
+      duration: const Duration(milliseconds: 180),
+      curve: Curves.easeOut,
+      padding: EdgeInsets.fromLTRB(16, 8, 16, 16 + safe + keyboard),
       child: SingleChildScrollView(
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -172,7 +187,9 @@ class _EntrySheetState extends ConsumerState<_EntrySheet> {
               children: [
                 Expanded(
                   child: Text(
-                    widget.existing != null ? 'Editar alimento' : 'Registrar alimento',
+                    widget.existing != null
+                        ? 'Editar alimento'
+                        : 'Registrar alimento',
                     style: TextStyle(
                       color: c.textPrimary,
                       fontSize: 20,
@@ -201,18 +218,21 @@ class _EntrySheetState extends ConsumerState<_EntrySheet> {
                 Expanded(child: _timeField(c)),
               ],
             ),
-            _field(_labelController, 'Etiqueta',
-                hint: 'Ej. pre-entreno'),
+            _field(_labelController, 'Etiqueta', hint: 'Ej. pre-entreno'),
             Row(
               children: [
                 Expanded(child: _field(_fields[2], 'Kcal', number: true)),
                 const SizedBox(width: 8),
-                Expanded(child: _field(_fields[3], 'Proteína (g)', number: true)),
+                Expanded(
+                  child: _field(_fields[3], 'Proteína (g)', number: true),
+                ),
               ],
             ),
             Row(
               children: [
-                Expanded(child: _field(_fields[4], 'Carbohidratos (g)', number: true)),
+                Expanded(
+                  child: _field(_fields[4], 'Carbohidratos (g)', number: true),
+                ),
                 const SizedBox(width: 8),
                 Expanded(child: _field(_fields[5], 'Grasas (g)', number: true)),
               ],
