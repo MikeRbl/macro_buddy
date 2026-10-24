@@ -1,2 +1,7 @@
-# Artefactos de build (APKs)
+# Artefactos de build (APKs y binarios)
 builds/
+*.apk
+*.aab
+*.ipa
+*.deb
+*.tar.gz
