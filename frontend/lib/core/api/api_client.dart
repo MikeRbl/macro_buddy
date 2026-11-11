@@ -227,6 +227,15 @@ class ApiClient {
 
   // ── Vínculo con el profesional ────────────────────────────────────────
 
+  /// Marca la cuenta como profesional (nombre visible y especialidad).
+  Future<Map<String, dynamic>> becomeProfessional({
+    required String token,
+    required String displayName,
+    required String specialty,
+  }) => _patch('/api/auth/profile', {
+    'professional': {'displayName': displayName, 'specialty': specialty},
+  }, token: token);
+
   /// Mis profesionales: vínculos activos y solicitudes pendientes.
   Future<List<dynamic>> myLinks({required String token}) =>
       _getList('/api/links/me', token: token);

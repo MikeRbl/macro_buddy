@@ -222,4 +222,31 @@ class AuthController extends Notifier<AuthState> {
       return 'Ocurrió un error inesperado. Intenta de nuevo.';
     }
   }
+
+  /// "Validarme como profesional". Devuelve el error, o `null` si salió bien.
+  Future<String?> becomeProfessional({
+    required String displayName,
+    required String specialty,
+  }) async {
+    final token = _token;
+    if (token == null) return 'Sesión expirada. Inicia sesión de nuevo.';
+    try {
+      final res = await ref
+          .read(apiClientProvider)
+          .becomeProfessional(
+            token: token,
+            displayName: displayName,
+            specialty: specialty,
+          );
+      final updated = AuthUser.fromJson(res['user'] as Map<String, dynamic>);
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_userKey, jsonEncode(updated.toJson()));
+      state = AuthState(user: updated, token: _token, initialized: true);
+      return null;
+    } on ApiException catch (e) {
+      return e.message;
+    } catch (_) {
+      return 'Ocurrió un error inesperado. Intenta de nuevo.';
+    }
+  }
 }

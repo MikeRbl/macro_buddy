@@ -10,6 +10,7 @@ import '../dashboard/dashboard_provider.dart';
 import '../navigation/shortcuts_sheet.dart';
 import '../nutrition/my_foods_screen.dart';
 import 'about_screen.dart';
+import 'become_professional_dialog.dart';
 import 'coach_card.dart';
 import 'edit_profile_screen.dart';
 
@@ -259,6 +260,28 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                       Icons.restaurant_outlined,
                       'Mis alimentos',
                       () => _push(const MyFoodsScreen()),
+                    ),
+                    Divider(height: 1, color: c.input),
+                    ListTile(
+                      leading: const Icon(
+                        Icons.verified_outlined,
+                        color: AppColors.tertiaryPurple,
+                      ),
+                      title: Text(
+                        user?.isProfessional ?? false
+                            ? 'Cuenta profesional'
+                            : '¿Eres coach o profesional de nutrición?',
+                        style: TextStyle(color: c.textPrimary, fontSize: 16),
+                      ),
+                      subtitle: Text(
+                        user?.isProfessional ?? false
+                            ? 'Administra a tus pacientes desde la versión web.'
+                            : 'Presiona aquí para validarte como profesional.',
+                        style: TextStyle(color: c.textSecondary, fontSize: 12),
+                      ),
+                      onTap: user?.isProfessional ?? false
+                          ? null
+                          : () => showBecomeProfessionalDialog(context),
                     ),
                     Divider(height: 1, color: c.input),
                     _settingsTile(

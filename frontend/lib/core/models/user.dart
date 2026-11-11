@@ -31,6 +31,7 @@ class AuthUser {
     this.targetCarbs,
     this.targetFats,
     this.isGuidedMode = false,
+    this.isProfessional = false,
   });
 
   final String id;
@@ -54,6 +55,9 @@ class AuthUser {
   final double? targetFats;
   final bool isGuidedMode;
 
+  /// Cuenta validada como profesional: administra pacientes desde la web.
+  final bool isProfessional;
+
   factory AuthUser.fromJson(Map<String, dynamic> json) {
     return AuthUser(
       id: json['id'] as String,
@@ -73,6 +77,7 @@ class AuthUser {
       targetCarbs: (json['targetCarbs'] as num?)?.toDouble(),
       targetFats: (json['targetFats'] as num?)?.toDouble(),
       isGuidedMode: json['isGuidedMode'] as bool? ?? false,
+      isProfessional: json['role'] == 'professional',
     );
   }
 
@@ -92,6 +97,7 @@ class AuthUser {
       'targetCarbs': targetCarbs,
       'targetFats': targetFats,
       'isGuidedMode': isGuidedMode,
+      'role': isProfessional ? 'professional' : 'user',
     };
   }
 }

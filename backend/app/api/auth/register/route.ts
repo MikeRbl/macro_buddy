@@ -2,7 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { connectDB } from "@/lib/db";
 import User from "@/models/User";
 import { hashPassword, signToken, type JwtPayload } from "@/lib/auth";
-import { COACH_ROLES, type CoachRole } from "@/lib/coach";
+import { parseProfessionalProfile } from "@/lib/coach";
+
+const PROFESSIONAL_ERROR =
+  "professional.displayName and a valid professional.specialty are required";
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -55,24 +58,9 @@ export async function POST(req: NextRequest) {
   }
 
   // Alta de profesional: `professional: { displayName, specialty, licenseId? }`.
-  let professionalProfile:
-    | { display_name: string; specialty: CoachRole; license_id?: string }
-    | undefined;
-  if (body.professional && typeof body.professional === "object") {
-    const p = body.professional as Record<string, unknown>;
-    const displayName = String(p.displayName ?? "").trim();
-    const specialty = String(p.specialty ?? "");
-    if (!displayName || !(COACH_ROLES as readonly string[]).includes(specialty)) {
-      return NextResponse.json(
-        { error: "professional.displayName and a valid professional.specialty are required" },
-        { status: 400 }
-      );
-    }
-    professionalProfile = {
-      display_name: displayName,
-      specialty: specialty as CoachRole,
-      license_id: String(p.licenseId ?? "").trim() || undefined,
-    };
+  const professionalProfile = parseProfessionalProfile(body.professional);
+  if (professionalProfile === null) {
+    return NextResponse.json({ error: PROFESSIONAL_ERROR }, { status: 400 });
   }
 
   await connectDB();
