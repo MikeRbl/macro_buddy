@@ -10,8 +10,16 @@ import '../../theme/app_theme.dart';
 /// Después de guardar un producto nuevo con código de barras, pregunta si
 /// el usuario quiere mandarlo a verificación. Se llama con la hoja de
 /// registro todavía abierta (su `context` sigue montado).
-Future<void> offerContribution(BuildContext context, UserFood food) async {
-  if (food.barcode == null || food.status != ContributionStatus.local) return;
+///
+/// [resend]: el usuario lo pidió desde "Mis alimentos", así que también
+/// aplica a productos que antes dejó solo en su equipo o fueron rechazados.
+Future<void> offerContribution(
+  BuildContext context,
+  UserFood food, {
+  bool resend = false,
+}) async {
+  if (food.barcode == null) return;
+  if (!resend && food.status != ContributionStatus.local) return;
   const c = ThemeColors.dark;
 
   final send = await showDialog<bool>(

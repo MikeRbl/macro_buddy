@@ -184,6 +184,30 @@ class FoodRepository {
     );
   }
 
+  /// Edita un producto propio desde "Mis alimentos". Valores por 100 g/ml;
+  /// la porción y el código se conservan. Si algo cambió, vuelve a "solo local".
+  Future<UserFood> updateUserFood(
+    UserFood food, {
+    required String name,
+    String? brand,
+    required double kcal,
+    required double protein,
+    required double carbs,
+    required double fat,
+  }) => _db.upsertUser(
+    localId: food.localId,
+    barcode: food.barcode,
+    name: name,
+    brand: brand,
+    kcal: kcal,
+    protein: protein,
+    carbs: carbs,
+    fat: fat,
+    baseUnit: food.baseUnit,
+    servingG: food.servingG,
+    servingLabel: food.servingLabel,
+  );
+
   Future<void> deleteUserFood(String localId) => _db.deleteUserFood(localId);
 
   /// "Solo en mi equipo": no se vuelve a preguntar hasta que cambien los datos.
