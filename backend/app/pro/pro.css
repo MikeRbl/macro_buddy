@@ -1,0 +1,155 @@
+/* Panel profesional: mismo tema oscuro del móvil; morado = todo lo del coach. */
+.pro {
+  --bg: #0b0b0c;
+  --panel: #0e0e10;
+  --card: #161618;
+  --line: #26262a;
+  --text: #f2f2f3;
+  --muted: #9a9aa0;
+  --soft: #b4b4ba;
+  --coral: #ff6b6b;
+  --cyan: #22d3ee;
+  --purple: #a78bfa;
+  --green: #34d399;
+  --amber: #fbbf24;
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-inter), system-ui, sans-serif;
+  display: flex;
+  flex-wrap: wrap;
+}
+.pro * { box-sizing: border-box; }
+.pro a { color: var(--purple); text-decoration: none; }
+.pro a:hover { color: #c4b5fd; }
+.pro h1 { margin: 0; font-size: 34px; font-weight: 700; letter-spacing: -0.01em; }
+.pro h2 { margin: 0; font-size: 20px; font-weight: 600; }
+.pro p { margin: 0; }
+.pro .mono { font-family: var(--font-mono), ui-monospace, monospace; }
+.pro .eyebrow { font-size: 12px; letter-spacing: 0.12em; color: var(--muted); text-transform: uppercase; }
+.pro .muted { color: var(--muted); }
+.pro .card { background: var(--card); border: 1px solid var(--line); border-radius: 24px; }
+.pro .card.purple { border-color: #3b2f5c; background: #17131f; }
+.pro .stack { display: flex; flex-direction: column; }
+.pro .wrap { display: flex; flex-wrap: wrap; }
+.pro .error { color: #ff8a8a; font-size: 14px; }
+
+/* Menú lateral: en pantallas angostas se apila arriba del contenido. */
+.pro-nav {
+  flex: 1 1 232px;
+  max-width: 100%;
+  padding: 28px 18px;
+  border-right: 1px solid #1e1e22;
+  background: var(--panel);
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+.pro-nav .links a {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  color: var(--soft);
+  font-size: 15px;
+}
+.pro-nav .links a:hover { background: #1c1c1f; color: var(--text); }
+.pro-nav .links a[aria-current="page"] { background: #1a1526; color: var(--purple); }
+.pro-main {
+  flex: 999 1 560px;
+  min-width: 0;
+  padding: 32px 40px 48px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+.pro .avatar {
+  width: 40px;
+  height: 40px;
+  flex: none;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  color: #140d24;
+}
+
+.pro button { font: 600 14px var(--font-inter), system-ui, sans-serif; cursor: pointer; }
+.pro button:disabled { opacity: 0.5; cursor: default; }
+.pro .btn {
+  min-height: 44px;
+  padding: 0 18px;
+  border-radius: 999px;
+  border: 1px solid #2e2e33;
+  background: transparent;
+  color: var(--text);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.pro .btn.primary { background: var(--purple); border-color: var(--purple); color: #140d24; }
+.pro .btn.coral { background: var(--coral); border-color: var(--coral); color: #1a0a0a; }
+.pro a.btn.primary, .pro a.btn.coral { font-weight: 600; font-size: 15px; }
+.pro a.btn.primary:hover { color: #140d24; }
+.pro a.btn.coral:hover { color: #1a0a0a; }
+
+.pro input[type="text"], .pro input[type="password"], .pro input[type="search"] {
+  width: 100%;
+  min-height: 48px;
+  padding: 0 16px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--text);
+  font: 15px var(--font-inter), system-ui, sans-serif;
+}
+.pro label.field { display: flex; flex-direction: column; gap: 6px; font-size: 14px; color: var(--soft); }
+.pro .search { border-radius: 999px; flex: 0 1 320px; }
+
+.pro .bar { flex: 1; height: 6px; border-radius: 999px; background: var(--line); }
+.pro .bar > div { height: 6px; border-radius: 999px; }
+
+/* Tabla de pacientes: en un teléfono se desplaza dentro de su caja. */
+.pro .table { overflow-x: auto; }
+.pro .row {
+  display: grid;
+  grid-template-columns: minmax(200px, 2.2fr) minmax(130px, 1.2fr) minmax(150px, 1.4fr) repeat(3, minmax(110px, 1fr));
+  gap: 16px;
+  align-items: center;
+  padding: 14px 24px;
+  border-top: 1px solid #222226;
+  min-width: 860px;
+  font-size: 15px;
+}
+.pro .row.head { font-size: 12px; letter-spacing: 0.1em; color: var(--muted); border-top-color: var(--line); }
+.pro .segmented { display: flex; gap: 6px; background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: 4px; }
+.pro .segmented button { border: 0; border-radius: 999px; padding: 8px 16px; background: transparent; color: var(--soft); font-weight: 500; min-height: 36px; }
+.pro .segmented button[aria-pressed="true"] { background: var(--coral); color: #1a0a0a; font-weight: 600; }
+.pro .alert { display: flex; gap: 12px; padding: 14px; border-radius: 16px; background: #211b0e; }
+.pro .alert.danger { background: #1f1416; }
+
+/* Vincular paciente */
+.pro .opt {
+  display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-radius: 16px;
+  border: 1px solid var(--line); background: var(--panel); cursor: pointer; font-size: 15px; flex: 1 1 140px;
+}
+.pro .opt:has(input:checked) { border-color: var(--purple); background: #1a1526; }
+.pro .opt input { accent-color: var(--purple); width: 18px; height: 18px; margin: 0; }
+.pro .perm { display: flex; align-items: center; gap: 14px; padding: 14px 0; border-top: 1px solid #222226; cursor: pointer; }
+.pro .perm input { width: 20px; height: 20px; accent-color: var(--purple); flex: none; margin: 0; }
+.pro .qr { background: #f7f7f8; border-radius: 24px; padding: 20px; width: 240px; height: 240px; display: grid; place-items: center; color: #55555c; text-align: center; font-size: 14px; }
+.pro .qr img { width: 200px; height: 200px; display: block; }
+.pro .code { font-size: 34px; font-weight: 600; letter-spacing: 0.08em; }
+.pro .steps { margin: 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
+.pro .steps li { padding: 16px; border-radius: 18px; background: var(--panel); border: 1px solid var(--line); display: flex; flex-direction: column; gap: 8px; font-size: 15px; line-height: 1.45; }
+
+@media (max-width: 640px) {
+  .pro-main { padding: 20px 16px 40px; }
+  .pro-nav { border-right: 0; border-bottom: 1px solid #1e1e22; padding: 16px; gap: 14px; }
+  .pro-nav .links { flex-direction: row !important; flex-wrap: wrap; }
+  .pro h1 { font-size: 28px; }
+  .pro .code { font-size: 28px; }
+}
