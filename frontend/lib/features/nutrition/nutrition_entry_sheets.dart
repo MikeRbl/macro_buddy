@@ -3,8 +3,10 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/models/nutrition.dart';
+import '../../core/services/food_repository.dart';
 import '../../core/services/open_food_facts_service.dart';
 import '../../theme/app_theme.dart';
+import 'contribute_food_flow.dart';
 import 'nutrition_provider.dart';
 
 Future<void> showManualEntrySheet(
@@ -42,6 +44,24 @@ class _EntrySheetState extends ConsumerState<_EntrySheet> {
   late final TextEditingController _labelController;
   bool _saving = false;
 
+  /// Guardar el producto en "Mis alimentos" (SQLite local) al registrar.
+  late bool _saveToMyFoods;
+
+  /// Producto con macros conocidos: al cambiar los gramos se reescalan.
+  OffProduct? get _knownProduct {
+    final p = widget.product;
+    return p != null && !p.isUnknown ? p : null;
+  }
+
+  /// Productos del catálogo ya están en MacroBuddy: no se guardan aparte.
+  bool get _canSaveProduct =>
+      widget.existing == null && widget.product?.source != FoodSource.catalog;
+
+  String? get _barcode {
+    final code = widget.product?.barcode.trim() ?? '';
+    return code.isEmpty ? null : code;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -49,32 +69,51 @@ class _EntrySheetState extends ConsumerState<_EntrySheet> {
     _time = widget.existing != null
         ? effectiveTime(widget.existing!)
         : (widget.time ?? nutritionNowTime());
+    // Con código de barras casi siempre conviene guardarlo; un registro
+    // manual suelto ("tacos de la esquina") por defecto no.
+    _saveToMyFoods = _canSaveProduct && _barcode != null;
+
+    final double grams =
+        widget.existing?.quantityG ?? widget.product?.servingSizeG ?? 100.0;
+    // Los productos traen macros por 100 g (o por porción): se escalan a
+    // los gramos que se muestran para que kcal y gramos coincidan.
+    final scaled = _knownProduct?.forGrams(grams);
     // [nombre, gramos, kcal, proteína, carbohidratos, grasas]
     _fields = [
       for (final controller in [
         TextEditingController(
           text: widget.existing?.name ?? widget.product?.name,
         ),
+        TextEditingController(text: _text(grams)),
         TextEditingController(
-          text: _text(
-            widget.existing?.quantityG ?? widget.product?.servingSizeG ?? 100,
-          ),
+          text: _text(widget.existing?.calories ?? scaled?.calories),
         ),
         TextEditingController(
-          text: _text(widget.existing?.calories ?? widget.product?.calories),
+          text: _text(widget.existing?.protein ?? scaled?.protein),
         ),
         TextEditingController(
-          text: _text(widget.existing?.protein ?? widget.product?.protein),
+          text: _text(widget.existing?.carbs ?? scaled?.carbs),
         ),
         TextEditingController(
-          text: _text(widget.existing?.carbs ?? widget.product?.carbs),
-        ),
-        TextEditingController(
-          text: _text(widget.existing?.fats ?? widget.product?.fats),
+          text: _text(widget.existing?.fats ?? scaled?.fats),
         ),
       ])
         controller,
     ];
+    if (widget.existing == null && _knownProduct != null) {
+      _fields[1].addListener(_rescaleFromProduct);
+    }
+  }
+
+  void _rescaleFromProduct() {
+    final grams = _parse(_fields[1]);
+    final product = _knownProduct;
+    if (grams == null || grams <= 0 || product == null) return;
+    final m = product.forGrams(grams);
+    _fields[2].text = _text(m.calories);
+    _fields[3].text = _text(m.protein);
+    _fields[4].text = _text(m.carbs);
+    _fields[5].text = _text(m.fats);
   }
 
   static String _text(num? value) =>
@@ -90,6 +129,7 @@ class _EntrySheetState extends ConsumerState<_EntrySheet> {
 
   @override
   void dispose() {
+    _fields[1].removeListener(_rescaleFromProduct);
     for (final f in _fields) {
       f.dispose();
     }
@@ -153,6 +193,22 @@ class _EntrySheetState extends ConsumerState<_EntrySheet> {
             label: label,
           );
     if (!mounted) return;
+    if (ok && widget.existing == null && _saveToMyFoods) {
+      final saved = await FoodRepository.shared.saveUserFood(
+        localId: widget.product?.userFoodId,
+        barcode: _barcode,
+        name: _fields[0].text.trim(),
+        brand: widget.product?.brand,
+        grams: _parse(_fields[1]) ?? 100,
+        calories: _parse(_fields[2]) ?? 0,
+        protein: _parse(_fields[3]) ?? 0,
+        carbs: _parse(_fields[4]) ?? 0,
+        fats: _parse(_fields[5]) ?? 0,
+      );
+      // La pregunta se hace con la hoja abierta para tener un context vivo.
+      if (saved != null && mounted) await offerContribution(context, saved);
+      if (!mounted) return;
+    }
     Navigator.of(context).pop();
     if (!ok) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -206,7 +262,7 @@ class _EntrySheetState extends ConsumerState<_EntrySheet> {
             if (widget.product != null) ...[
               const SizedBox(height: 4),
               Text(
-                'OpenFoodFacts · ${widget.product!.per100g ? 'por 100 g' : 'por porción (${_trim(widget.product!.servingSizeG ?? 100)} g)'}',
+                _sourceLine(widget.product!),
                 style: TextStyle(color: c.textSecondary, fontSize: 12),
               ),
             ],
@@ -237,6 +293,20 @@ class _EntrySheetState extends ConsumerState<_EntrySheet> {
                 Expanded(child: _field(_fields[5], 'Grasas (g)', number: true)),
               ],
             ),
+            if (_canSaveProduct)
+              SwitchListTile.adaptive(
+                contentPadding: EdgeInsets.zero,
+                value: _saveToMyFoods,
+                onChanged: (v) => setState(() => _saveToMyFoods = v),
+                title: Text(
+                  'Guardar en mis alimentos',
+                  style: TextStyle(color: c.textPrimary, fontSize: 14),
+                ),
+                subtitle: Text(
+                  'Para encontrarlo después, incluso sin internet.',
+                  style: TextStyle(color: c.textSecondary, fontSize: 12),
+                ),
+              ),
             const SizedBox(height: 12),
             ElevatedButton(
               onPressed: _saving ? null : _save,
@@ -255,6 +325,19 @@ class _EntrySheetState extends ConsumerState<_EntrySheet> {
         ),
       ),
     );
+  }
+
+  String _sourceLine(OffProduct p) {
+    if (p.isUnknown) {
+      return p.barcode.isEmpty
+          ? 'Producto nuevo'
+          : 'Producto nuevo · código ${p.barcode}';
+    }
+    final basis = p.per100g
+        ? '${p.calories.round()} kcal por 100 g'
+        : '${p.calories.round()} kcal por porción '
+              '(${_trim(p.servingSizeG ?? 100)} g)';
+    return '${p.source.label} · $basis';
   }
 
   /// Píldora de hora: abre el `showTimePicker` nativo.

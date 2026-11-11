@@ -5,6 +5,7 @@ import 'core/config/api_config.dart';
 import 'features/auth/auth_controller.dart';
 import 'features/auth/login_screen.dart';
 import 'features/navigation/main_scaffold.dart';
+import 'features/nutrition/food_catalog_bootstrap.dart';
 import 'theme/app_theme.dart';
 
 Future<void> main() async {
@@ -34,6 +35,8 @@ class AuthGate extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final authState = ref.watch(authControllerProvider);
+    // Token + sync en segundo plano del catálogo de alimentos.
+    ref.watch(foodCatalogBootstrapProvider);
 
     if (!authState.initialized) {
       return const Scaffold(

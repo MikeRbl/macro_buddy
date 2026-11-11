@@ -7,7 +7,9 @@
     "build": "next build",
     "start": "NODE_ENV=production tsx server.ts",
     "lint": "eslint",
-    "seed": "tsx scripts/seed.ts"
+    "seed": "tsx scripts/seed.ts",
+    "import:foods": "tsx scripts/import-foods.ts",
+    "export:catalog": "tsx scripts/export-catalog.ts"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

@@ -3,7 +3,26 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
-/// Resultado de una consulta a OpenFoodFacts con los macros por producto.
+/// De dónde salió un producto.
+enum FoodSource {
+  /// Catálogo verificado de MacroBuddy (local + sincronizado).
+  catalog,
+
+  /// Creado por el usuario; vive en su teléfono.
+  user,
+
+  /// Respaldo directo a la API de OpenFoodFacts.
+  openFoodFacts;
+
+  String get label => switch (this) {
+    FoodSource.catalog => 'MacroBuddy',
+    FoodSource.user => 'Mis alimentos',
+    FoodSource.openFoodFacts => 'OpenFoodFacts',
+  };
+}
+
+/// Producto con sus macros. Nació para OpenFoodFacts y hoy lo usan todas
+/// las fuentes (catálogo propio, productos del usuario y OFF).
 class OffProduct {
   const OffProduct({
     required this.barcode,
@@ -14,7 +33,11 @@ class OffProduct {
     required this.fats,
     required this.per100g,
     this.servingSizeG,
+    this.servingLabel,
     this.imageUrl,
+    this.brand,
+    this.source = FoodSource.openFoodFacts,
+    this.userFoodId,
   });
 
   final String barcode;
@@ -27,7 +50,18 @@ class OffProduct {
   /// true si los valores corresponden a 100 g, false si a una porción.
   final bool per100g;
   final double? servingSizeG;
+
+  /// Ej. "1 pieza", "2 rebanadas (50 g)".
+  final String? servingLabel;
   final String? imageUrl;
+  final String? brand;
+  final FoodSource source;
+
+  /// `local_id` en `user_foods` cuando `source == FoodSource.user`.
+  final String? userFoodId;
+
+  /// Sin nombre = código escaneado que no existe en ninguna fuente.
+  bool get isUnknown => name.trim().isEmpty;
 
   /// Macros escalados a `grams` de producto.
   ({double calories, double protein, double carbs, double fats}) forGrams(

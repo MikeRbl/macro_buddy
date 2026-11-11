@@ -31,6 +31,8 @@
 		<key>NSAllowsArbitraryLoads</key>
 		<true/>
 	</dict>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Para adjuntar la foto de la tabla nutrimental de un producto que quieras agregar a MacroBuddy.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Macrobuddy necesita la cámara para escanear el código de barras de los alimentos.</string>
 	<key>UIApplicationSceneManifest</key>

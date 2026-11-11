@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/models/nutrition.dart';
+import '../../core/services/food_repository.dart';
 import '../../core/services/open_food_facts_service.dart';
 import '../../theme/app_theme.dart';
 import '../../core/widgets/mb_icon.dart';
@@ -67,7 +68,7 @@ class _Pick {
 _Pick? _pickFromProduct(OffProduct p) {
   if (p.name.trim().isEmpty) return null;
   final basis = p.per100g ? 100.0 : (p.servingSizeG ?? 100);
-  return _Pick(
+  final pick = _Pick(
     key: 'off:${p.barcode.isNotEmpty ? p.barcode : p.name}',
     name: p.name.trim(),
     barcode: p.barcode.isEmpty ? null : p.barcode,
@@ -77,6 +78,11 @@ _Pick? _pickFromProduct(OffProduct p) {
     carbs: p.carbs,
     fats: p.fats,
   );
+  // Con porción conocida ("1 tortilla = 30 g") se propone esa cantidad.
+  final serving = p.servingSizeG;
+  return p.per100g && serving != null && serving > 0
+      ? pick.withGrams(serving)
+      : pick;
 }
 
 _Pick? _pickFromItem(NutritionItem i) {
@@ -114,7 +120,7 @@ List<_Pick> _favoritesFromLogs(List<NutritionLog> logs) {
 }
 
 /// Seleccionar e ingresar alimentos: escáner de código de barras, búsqueda
-/// en OpenFoodFacts, favoritos frecuentes y registro manual. La hora del
+/// en el catálogo de MacroBuddy, favoritos frecuentes y registro manual. La hora del
 /// registro se elige arriba y aplica a todos los alimentos del lote.
 class FoodEntryScreen extends ConsumerStatefulWidget {
   const FoodEntryScreen({
@@ -184,24 +190,25 @@ class _FoodEntryScreenState extends ConsumerState<FoodEntryScreen> {
       _error = null;
     });
     try {
-      final results = await OpenFoodFactsService.shared.searchProducts(query);
+      // Catálogo local + mis alimentos; los macros ya vienen resueltos.
+      final hits = await FoodRepository.shared.search(query);
       if (!mounted) return;
       setState(() {
-        _results = results;
+        _results = [for (final h in hits) h.result];
+        for (final h in hits) {
+          _loadedProducts[h.result.barcode] = h.product;
+        }
         _loading = false;
-        _error = results.isEmpty ? 'Sin resultados para "$query".' : null;
-      });
-    } on OffException catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _loading = false;
-        _error = e.message;
+        _error = hits.isEmpty
+            ? 'Sin resultados para "$query". Escanéalo o regístralo '
+                  'manualmente y quedará en tus alimentos.'
+            : null;
       });
     } catch (_) {
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _error = 'No se pudo contactar OpenFoodFacts. Revisa tu conexión.';
+        _error = 'No se pudo buscar. Intenta de nuevo.';
       });
     }
   }
@@ -218,7 +225,7 @@ class _FoodEntryScreenState extends ConsumerState<FoodEntryScreen> {
     if (_loadingProducts.contains(barcode)) return;
     setState(() => _loadingProducts.add(barcode));
     try {
-      final product = await OpenFoodFactsService.shared.fetchByBarcode(barcode);
+      final product = await FoodRepository.shared.fetchByBarcode(barcode);
       if (!mounted) return;
       setState(() => _loadingProducts.remove(barcode));
       if (product == null) {
@@ -231,14 +238,10 @@ class _FoodEntryScreenState extends ConsumerState<FoodEntryScreen> {
       setState(() => _loadedProducts[barcode] = product);
       final pick = _pickFromProduct(product);
       if (pick != null) _togglePick(pick);
-    } on OffException catch (e) {
-      if (!mounted) return;
-      setState(() => _loadingProducts.remove(barcode));
-      _showMessage(e.message);
     } catch (_) {
       if (!mounted) return;
       setState(() => _loadingProducts.remove(barcode));
-      _showMessage('No se pudo contactar OpenFoodFacts. Revisa tu conexión.');
+      _showMessage('No se pudo cargar el producto. Intenta de nuevo.');
     }
   }
 
