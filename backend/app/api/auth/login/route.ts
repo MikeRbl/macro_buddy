@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { connectDB } from "@/lib/db";
 import User from "@/models/User";
 import { verifyPassword, signToken, type JwtPayload } from "@/lib/auth";
+import { syncGuidedMode } from "@/lib/coach";
 
 export async function POST(req: NextRequest) {
   let body: Record<string, unknown>;
@@ -46,6 +47,9 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // Corrige banderas viejas de cuando el usuario se activaba el modo guiado solo.
+  user.is_guided_mode = await syncGuidedMode(user._id);
+
   const payload: JwtPayload = {
     userId: user._id.toString(),
     username: user.username,
@@ -72,6 +76,7 @@ export async function POST(req: NextRequest) {
       targetCarbs: user.target_carbs ?? null,
       targetFats: user.target_fats ?? null,
       isGuidedMode: user.is_guided_mode ?? false,
+      role: user.role ?? "user",
     },
   });
 }
