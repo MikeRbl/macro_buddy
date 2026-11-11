@@ -344,6 +344,14 @@ void main() {
     // Comunidad se eliminó del perfil (ui_corrections_plan.md §4).
     expect(find.text('Comunidad'), findsNothing);
     expect(find.text('Cerrar sesión'), findsOneWidget);
+    expect(find.text('Mis alimentos'), findsOneWidget);
+    // Atribución ODbL: visible en el pie y en la pantalla "Acerca de".
+    expect(find.textContaining('Open Food Facts'), findsOneWidget);
+    await tester.ensureVisible(find.text('Acerca de'));
+    await tester.tap(find.text('Acerca de'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Open Database License'), findsOneWidget);
+    expect(find.text('https://openfoodfacts.org'), findsOneWidget);
   });
 
   testWidgets(

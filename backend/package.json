@@ -7,7 +7,9 @@
     "build": "next build",
     "start": "NODE_ENV=production tsx server.ts",
     "lint": "eslint",
-    "seed": "tsx scripts/seed.ts"
+    "seed": "tsx scripts/seed.ts",
+    "import:foods": "tsx scripts/import-foods.ts",
+    "export:catalog": "tsx scripts/export-catalog.ts"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
@@ -19,6 +21,7 @@
     "ws": "^8.21.3"
   },
   "devDependencies": {
+    "@duckdb/node-api": "^2.0.0-r.1",
     "@types/bcryptjs": "^2.4.6",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^20",

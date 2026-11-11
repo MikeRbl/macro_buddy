@@ -32,8 +32,8 @@ Future<void> handleScanResult(
       SnackBar(
         backgroundColor: ThemeColors.dark.card,
         content: Text(
-          'Producto no encontrado en OpenFoodFacts (${result.code}). '
-          'Regístralo manualmente.',
+          'No encontramos este producto (${result.code}). '
+          'Regístralo y quedará guardado en tu equipo.',
           style: TextStyle(color: ThemeColors.dark.textPrimary),
         ),
       ),
@@ -56,7 +56,7 @@ Future<void> handleScanResult(
   );
 }
 
-/// Flujo completo de escaneo: cámara → OpenFoodFacts (ya resuelto dentro
+/// Flujo completo de escaneo: cámara → `FoodRepository` (ya resuelto dentro
 /// del escáner) → hoja de registro con el producto o manual.
 /// Lo usan el FAB de Nutrición, la búsqueda y el atajo "Escanear comida".
 Future<void> scanFoodFlow(BuildContext context) async {

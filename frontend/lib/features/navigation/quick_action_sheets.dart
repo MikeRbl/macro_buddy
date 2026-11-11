@@ -64,20 +64,20 @@ void showDashboardQuickActions(BuildContext context) {
   ]);
 }
 
-/// Entrada de alimentos para la Nutrición: escáner, búsqueda OFF o manual.
+/// Entrada de alimentos para la Nutrición: escáner, búsqueda o manual.
 void showNutritionQuickActions(BuildContext context) {
   _showActionSheet(context, 'Ingresar alimento', [
     _SheetAction(
       icon: MbIcon(MbAssets.scanBarcode, color: AppColors.secondaryCyan),
       tint: AppColors.secondaryCyan,
       title: 'Escanear código de barras',
-      subtitle: 'Producto real vía OpenFoodFacts',
+      subtitle: 'Catálogo MacroBuddy, funciona sin internet',
       go: (ctx, nav) async => scanFoodFlow(ctx),
     ),
     _SheetAction(
       icon: const Icon(Icons.search),
       tint: AppColors.primaryCoral,
-      title: 'Buscar en OpenFoodFacts',
+      title: 'Buscar alimento',
       subtitle: 'Nombre, marca o receta',
       go: (ctx, nav) async => nav.push(
         MaterialPageRoute<void>(builder: (_) => const FoodEntryScreen()),

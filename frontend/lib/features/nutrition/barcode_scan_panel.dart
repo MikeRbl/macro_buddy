@@ -5,19 +5,20 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
+import '../../core/services/food_repository.dart';
 import '../../core/services/open_food_facts_service.dart';
 import '../../theme/app_theme.dart';
 
-/// Resultado de la lectura de un código: el código crudo, el producto de
-/// OpenFoodFacts (`null` si no existe) y un mensaje si la consulta falló
-/// (red / servidor / saturación) — distinto de "no existe".
+/// Resultado de la lectura de un código: el código crudo, el producto
+/// (`null` si no existe en ninguna fuente) y un mensaje si la consulta
+/// falló — distinto de "no existe".
 typedef BarcodeScanResult = ({String code, OffProduct? product, String? error});
 
 /// Panel reutilizable del escáner: cámara limitada a [cameraHeight],
 /// recuadro de enfoque, e ingreso manual del código de barras.
 ///
 /// La cámara y el campo manual llaman al mismo `_lookup`, de modo que ambos
-/// caminos comparten la consulta a OpenFoodFacts y el manejo de errores.
+/// caminos comparten la consulta (`FoodRepository`) y el manejo de errores.
 class BarcodeScanPanel extends StatefulWidget {
   const BarcodeScanPanel({
     super.key,
@@ -93,11 +94,10 @@ class BarcodeScanPanelState extends State<BarcodeScanPanel> {
     String? error;
     OffProduct? product;
     try {
-      product = await OpenFoodFactsService.shared.fetchByBarcode(code);
-    } on OffException catch (e) {
-      error = e.message;
+      // Local primero: funciona sin internet y sin depender de OFF.
+      product = await FoodRepository.shared.fetchByBarcode(code);
     } catch (_) {
-      error = 'No se pudo contactar OpenFoodFacts. Revisa tu conexión.';
+      error = 'No se pudo consultar el producto. Intenta de nuevo.';
     }
 
     if (!mounted) return;

@@ -9,6 +9,8 @@ import '../../theme/app_theme.dart';
 import '../auth/auth_controller.dart';
 import '../dashboard/dashboard_provider.dart';
 import '../navigation/shortcuts_sheet.dart';
+import '../nutrition/my_foods_screen.dart';
+import 'about_screen.dart';
 import 'edit_profile_screen.dart';
 
 /// Tab de Perfil: atleta, vínculo con el entrenador y configuración.
@@ -24,6 +26,20 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     Navigator.of(
       context,
     ).push(MaterialPageRoute<void>(builder: (_) => const EditProfileScreen()));
+  }
+
+  void _push(Widget screen) {
+    Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => screen));
+  }
+
+  Widget _settingsTile(IconData icon, String title, VoidCallback onTap) {
+    const c = ThemeColors.dark;
+    return ListTile(
+      leading: Icon(icon, color: c.textPrimary),
+      title: Text(title, style: TextStyle(color: c.textPrimary, fontSize: 16)),
+      trailing: Icon(Icons.chevron_right, color: c.textSecondary),
+      onTap: onTap,
+    );
   }
 
   void _openShortcuts() {
@@ -237,6 +253,18 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                       ),
                       onTap: _openShortcuts,
                     ),
+                    Divider(height: 1, color: c.input),
+                    _settingsTile(
+                      Icons.restaurant_outlined,
+                      'Mis alimentos',
+                      () => _push(const MyFoodsScreen()),
+                    ),
+                    Divider(height: 1, color: c.input),
+                    _settingsTile(
+                      Icons.info_outline,
+                      'Acerca de',
+                      () => _push(const AboutScreen()),
+                    ),
                   ],
                 ),
               ),
@@ -248,6 +276,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               ),
               const SizedBox(height: 16),
               const BuildFooter(),
+              FoodDataCredit(onTap: () => _push(const AboutScreen())),
               const SizedBox(height: 170),
             ],
           ),

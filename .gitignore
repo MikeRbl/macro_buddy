@@ -5,3 +5,9 @@ builds/
 *.ipa
 *.deb
 *.tar.gz
+
+# Carpeta base (respaldo/proyecto original, muy pesada)
+base/
+
+# Assets del tracker de ejercicios (se servirán desde un servidor externo)
+backend/public/assets/
