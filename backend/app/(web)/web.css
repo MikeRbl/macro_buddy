@@ -1,4 +1,4 @@
-/* Panel profesional: mismo tema oscuro del móvil; morado = todo lo del coach. */
+/* Web de Macrobuddy (panel del usuario y profesional): mismo tema oscuro del móvil. */
 .pro {
   --bg: #0b0b0c;
   --panel: #0e0e10;
@@ -55,7 +55,9 @@
   font-size: 15px;
 }
 .pro-nav .links a:hover { background: #1c1c1f; color: var(--text); }
-.pro-nav .links a[aria-current="page"] { background: #1a1526; color: var(--purple); }
+/* Coral = lo del usuario; morado = lo del profesional. */
+.pro-nav .links a[aria-current="page"] { background: #1f1416; color: var(--coral); }
+.pro-nav .links a.is-pro[aria-current="page"] { background: #1a1526; color: var(--purple); }
 .pro-main {
   flex: 999 1 560px;
   min-width: 0;
@@ -153,3 +155,10 @@
   .pro h1 { font-size: 28px; }
   .pro .code { font-size: 28px; }
 }
+
+/* Panel del usuario */
+.pro .tile { padding: 14px; border-radius: 18px; background: var(--panel); border: 1px solid var(--line); display: flex; flex-direction: column; gap: 6px; }
+.pro .meal { display: flex; flex-wrap: wrap; gap: 14px; padding: 14px 0; border-top: 1px solid #222226; align-items: baseline; }
+.pro .chip { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: #c4c4ca; background: #221c30; border-radius: 999px; padding: 6px 12px; }
+.pro .legend { display: flex; align-items: center; gap: 12px; }
+.pro .legend i { width: 12px; height: 12px; border-radius: 50%; flex: none; }

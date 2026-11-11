@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { Avatar, SPECIALTY, useSession } from "./session";
+import { Avatar, SPECIALTY, useSession } from "../session";
 
 interface Patient {
   id: string;

@@ -14,8 +14,28 @@ import {
 
 export interface Session {
   token: string;
+  username: string;
+  /** Nombre visible: el profesional, el nombre completo o el usuario. */
   name: string;
-  specialty: string;
+  /** `null` si la cuenta no es profesional. */
+  specialty: string | null;
+}
+
+interface ApiUser {
+  username: string;
+  fullName: string | null;
+  role?: string;
+  professional?: { displayName: string; specialty: string } | null;
+}
+
+function toSession(token: string, user: ApiUser): Session {
+  const pro = user.role === "professional" ? user.professional : null;
+  return {
+    token,
+    username: user.username,
+    name: pro?.displayName || user.fullName || user.username,
+    specialty: pro?.specialty ?? null,
+  };
 }
 
 export const SPECIALTY: Record<string, string> = {
@@ -33,10 +53,10 @@ const SessionContext = createContext<{ session: Session; api: Api; logout: () =>
   null
 );
 
-/** Sesión del profesional y `api()`, que manda el JWT y cierra sesión si venció. */
+/** Sesión del usuario y `api()`, que manda el JWT y cierra sesión si venció. */
 export function useSession() {
   const ctx = useContext(SessionContext);
-  if (!ctx) throw new Error("useSession fuera de ProShell");
+  if (!ctx) throw new Error("useSession fuera de WebShell");
   return ctx;
 }
 
@@ -51,7 +71,7 @@ export function Avatar({ name, size = 40 }: { name: string; size?: number }) {
   );
 }
 
-function Logo() {
+function Logo({ pro = false }: { pro?: boolean }) {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "0 10px" }}>
       <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#F2F2F3" strokeWidth="1.6" aria-hidden="true">
@@ -60,9 +80,11 @@ function Logo() {
       </svg>
       <div className="stack" style={{ gap: 2 }}>
         <span style={{ fontWeight: 700, letterSpacing: "0.14em", fontSize: 15 }}>MACROBUDDY</span>
-        <span className="mono" style={{ fontSize: 11, letterSpacing: "0.12em", color: "var(--purple)" }}>
-          PRO · PROFESIONAL
-        </span>
+        {pro && (
+          <span className="mono" style={{ fontSize: 11, letterSpacing: "0.12em", color: "var(--purple)" }}>
+            PRO · PROFESIONAL
+          </span>
+        )}
       </div>
     </div>
   );
@@ -86,16 +108,8 @@ function Login({ onLogin }: { onLogin: (s: Session) => void }) {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         setError(res.status === 401 ? "Usuario o contraseña incorrectos." : (data.error ?? "No se pudo iniciar sesión."));
-      } else if (data.user?.role !== "professional" || !data.user.professional) {
-        setError(
-          "Esta cuenta no es profesional. En la app abre Perfil y toca “¿Eres coach o profesional de nutrición?” para validarte."
-        );
       } else {
-        onLogin({
-          token: data.token,
-          name: data.user.professional.displayName,
-          specialty: data.user.professional.specialty,
-        });
+        onLogin(toSession(data.token, data.user));
         return;
       }
     } catch {
@@ -126,7 +140,23 @@ function Login({ onLogin }: { onLogin: (s: Session) => void }) {
   );
 }
 
-const NAV = [
+const USER_NAV = [
+  {
+    href: "/panel",
+    label: "Mi panel",
+    icon: (
+      <>
+        <rect x="3" y="3" width="8" height="8" rx="2" />
+        <rect x="13" y="3" width="8" height="8" rx="2" />
+        <rect x="3" y="13" width="8" height="8" rx="2" />
+        <rect x="13" y="13" width="8" height="8" rx="2" />
+      </>
+    ),
+  },
+];
+
+// Solo para cuentas validadas como profesional.
+const PRO_NAV = [
   {
     href: "/pro",
     label: "Pacientes",
@@ -152,7 +182,7 @@ const NAV = [
   },
 ];
 
-export function ProShell({ children }: { children: ReactNode }) {
+export function WebShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   // `undefined` hasta leer el navegador: evita parpadear el login.
   const [session, setSession] = useState<Session | null | undefined>(undefined);
@@ -166,6 +196,20 @@ export function ProShell({ children }: { children: ReactNode }) {
     }
     // eslint-disable-next-line react-hooks/set-state-in-effect -- localStorage no existe en el servidor
     setSession(saved?.token ? saved : null);
+    if (!saved?.token) return;
+    // El rol pudo cambiar desde la app (validarse como profesional).
+    fetch("/api/auth/profile", { headers: { Authorization: `Bearer ${saved.token}` } })
+      .then(async (res) => {
+        if (res.status === 401) {
+          localStorage.removeItem(STORAGE_KEY);
+          setSession(null);
+        } else if (res.ok) {
+          const fresh = toSession(saved.token, (await res.json()).user);
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(fresh));
+          setSession(fresh);
+        }
+      })
+      .catch(() => {});
   }, []);
 
   const logout = useCallback(() => {
@@ -204,13 +248,22 @@ export function ProShell({ children }: { children: ReactNode }) {
     );
   }
 
+  const isPro = session.specialty != null;
+  const nav = isPro ? [...USER_NAV, ...PRO_NAV] : USER_NAV;
+  const inProArea = pathname.startsWith("/pro");
+
   return (
     <SessionContext.Provider value={{ session, api, logout }}>
       <nav className="pro-nav" aria-label="Principal">
-        <Logo />
+        <Logo pro={isPro} />
         <div className="links stack" style={{ gap: 4 }}>
-          {NAV.map((item) => (
-            <Link key={item.href} href={item.href} aria-current={pathname === item.href ? "page" : undefined}>
+          {nav.map((item) => (
+            <Link
+              key={item.href}
+              href={item.href}
+              aria-current={pathname === item.href ? "page" : undefined}
+              className={item.href.startsWith("/pro") ? "is-pro" : undefined}
+            >
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
                 {item.icon}
               </svg>
@@ -222,14 +275,29 @@ export function ProShell({ children }: { children: ReactNode }) {
           <Avatar name={session.name} />
           <div className="stack" style={{ gap: 2, minWidth: 0, flex: 1 }}>
             <span style={{ fontWeight: 600, fontSize: 14 }}>{session.name}</span>
-            <span className="muted" style={{ fontSize: 12 }}>{SPECIALTY[session.specialty] ?? ""}</span>
+            <span className="muted" style={{ fontSize: 12 }}>
+              {isPro ? SPECIALTY[session.specialty!] : `@${session.username}`}
+            </span>
           </div>
           <button className="btn" onClick={logout} style={{ minHeight: 36, padding: "0 12px" }}>
             Salir
           </button>
         </div>
       </nav>
-      <main className="pro-main">{children}</main>
+      <main className="pro-main">
+        {inProArea && !isPro ? (
+          <div className="card stack" style={{ padding: 28, gap: 10, maxWidth: 560 }}>
+            <h1 style={{ fontSize: 24 }}>Sección para profesionales</h1>
+            <p className="muted" style={{ lineHeight: 1.5 }}>
+              Tu cuenta no está validada como profesional. En la app abre Perfil y toca “¿Eres coach o
+              profesional de nutrición?”; después vuelve a entrar aquí.
+            </p>
+            <Link href="/panel" style={{ fontWeight: 600 }}>Ir a mi panel</Link>
+          </div>
+        ) : (
+          children
+        )}
+      </main>
     </SessionContext.Provider>
   );
 }

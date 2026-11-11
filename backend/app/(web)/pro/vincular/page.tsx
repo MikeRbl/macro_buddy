@@ -2,7 +2,7 @@
 
 import QRCode from "qrcode";
 import { useCallback, useEffect, useState } from "react";
-import { Avatar, useSession } from "../session";
+import { Avatar, useSession } from "../../session";
 
 interface LinkCode {
   code: string;
@@ -40,7 +40,7 @@ function remaining(expiresAt: string, now: number): string {
 
 export default function LinkPatientPage() {
   const { session, api } = useSession();
-  const [role, setRole] = useState(session.specialty);
+  const [role, setRole] = useState(session.specialty ?? "both");
   const [permissions, setPermissions] = useState<Record<PermissionKey, boolean>>({
     setMacros: true,
     manageRoutines: true,

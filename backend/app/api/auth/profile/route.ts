@@ -23,6 +23,7 @@ function publicUser(user: {
   target_fats?: number | null;
   is_guided_mode?: boolean | null;
   role?: string | null;
+  professional_profile?: { display_name: string; specialty: string } | null;
 }) {
   return {
     id: user._id.toString(),
@@ -44,7 +45,28 @@ function publicUser(user: {
     targetFats: user.target_fats ?? null,
     isGuidedMode: user.is_guided_mode ?? false,
     role: user.role ?? "user",
+    professional: user.professional_profile
+      ? {
+          displayName: user.professional_profile.display_name,
+          specialty: user.professional_profile.specialty,
+        }
+      : null,
   };
+}
+
+/** GET /api/auth/profile → el usuario de la sesión, con datos al día. */
+export async function GET(req: NextRequest) {
+  const auth = req.headers.get("authorization") ?? "";
+  let userId: string;
+  try {
+    userId = verifyToken(auth.startsWith("Bearer ") ? auth.slice(7) : "").userId;
+  } catch {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  await connectDB();
+  const user = await User.findById(userId);
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  return NextResponse.json({ user: publicUser(user) });
 }
 
 export async function PATCH(req: NextRequest) {
