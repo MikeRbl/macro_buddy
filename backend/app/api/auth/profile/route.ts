@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { connectDB } from "@/lib/db";
 import User from "@/models/User";
 import { verifyToken, hashPassword, verifyPassword } from "@/lib/auth";
+import { patientLocks } from "@/lib/coach";
 
 const GENDERS = ["male", "female", "other", "prefer_not_to_say"] as const;
 type Gender = (typeof GENDERS)[number];
@@ -96,14 +97,17 @@ export async function PATCH(req: NextRequest) {
     user.gender = body.gender as Gender;
   }
 
-  // Modo guiado: el coach bloquea la edición de macros.
+  // Con un profesional vinculado que fija macros, el paciente no los edita.
   const macroFields = [
     "targetCalories",
     "targetProtein",
     "targetCarbs",
     "targetFats",
   ] as const;
-  if (macroFields.some((f) => body[f] != null) && user.is_guided_mode) {
+  if (
+    macroFields.some((f) => body[f] != null) &&
+    (await patientLocks(user._id)).macros
+  ) {
     return NextResponse.json(
       { error: "Macros are locked while guided mode is active" },
       { status: 403 }
@@ -113,9 +117,7 @@ export async function PATCH(req: NextRequest) {
   if (body.targetProtein != null) user.target_protein = Number(body.targetProtein);
   if (body.targetCarbs != null) user.target_carbs = Number(body.targetCarbs);
   if (body.targetFats != null) user.target_fats = Number(body.targetFats);
-  if (typeof body.isGuidedMode === "boolean") {
-    user.is_guided_mode = body.isGuidedMode;
-  }
+  // `isGuidedMode` del cliente se ignora: lo decide el vínculo con el profesional.
 
   if (typeof body.username === "string" && body.username.trim()) {
     const username = body.username.trim();

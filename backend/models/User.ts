@@ -37,7 +37,25 @@ const userSchema = new mongoose.Schema(
     target_carbs: { type: Number, default: 250 },
     target_fats: { type: Number, default: 70 },
     // Modo guiado por coach: bloquea la edición de macros/rutinas en el cliente
+    // Se deriva de los vínculos activos (lib/coach.ts → syncGuidedMode);
+    // el usuario ya no puede cambiarlo.
     is_guided_mode: { type: Boolean, default: false },
+    role: { type: String, enum: ["user", "professional"], default: "user" },
+    // Solo si role = professional.
+    professional_profile: {
+      type: new mongoose.Schema(
+        {
+          display_name: { type: String, required: true, trim: true, maxlength: 80 },
+          specialty: {
+            type: String,
+            enum: ["nutritionist", "trainer", "both", "doctor"],
+            required: true,
+          },
+          license_id: { type: String, trim: true, maxlength: 40 },
+        },
+        { _id: false }
+      ),
+    },
   },
   { timestamps: true }
 );
