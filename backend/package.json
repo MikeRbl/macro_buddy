@@ -9,6 +9,7 @@
     "lint": "eslint",
     "test": "tsx --test tests/*.test.ts",
     "seed": "tsx scripts/seed.ts",
+    "seed:demo": "tsx scripts/seed-demo.ts",
     "import:foods": "tsx scripts/import-foods.ts",
     "export:catalog": "tsx scripts/export-catalog.ts"
   },
