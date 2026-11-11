@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { connectDB } from "@/lib/db";
 import UserWorkout from "@/models/UserWorkout";
+// populate("sets.exercise_id") necesita el modelo registrado en este proceso.
+import "@/models/Exercise";
 import { verifyToken } from "@/lib/auth";
 
 interface SetInput {
