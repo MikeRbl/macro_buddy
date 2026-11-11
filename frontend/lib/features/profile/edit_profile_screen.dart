@@ -81,7 +81,7 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
 
   Future<void> _save() async {
     FocusScope.of(context).unfocus();
-    final guided = ref.read(authControllerProvider).user?.isGuidedMode ?? false;
+    final guided = ref.read(macrosLockedProvider);
     final name = _fullNameController.text.trim();
     final weightStr = _weightController.text.trim().replaceAll(',', '.');
     final heightStr = _heightController.text.trim().replaceAll(',', '.');
@@ -286,7 +286,7 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
                 ),
               ),
               const SizedBox(height: 16),
-              _MacrosSection(guided: user?.isGuidedMode ?? false, controllers: _macroControllers),
+              _MacrosSection(guided: ref.watch(macrosLockedProvider), controllers: _macroControllers),
               const SizedBox(height: 16),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
