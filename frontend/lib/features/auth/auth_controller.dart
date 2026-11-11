@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/api/api_client.dart';
 import '../../core/api/exercises_provider.dart';
+import '../../core/models/coach_link.dart';
 import '../../core/models/user.dart';
 
 class AuthState {
@@ -42,10 +43,31 @@ class AuthState {
   }
 }
 
-/// true mientras exista vínculo con un profesional: bloquea edición de
-/// macros (backend 403) y edición de rutinas (UI).
+/// Vínculos del usuario con profesionales (activos y pendientes).
+final coachLinksProvider = FutureProvider<List<CoachLink>>((ref) async {
+  final token = ref.watch(authControllerProvider.select((s) => s.token));
+  if (token == null) return const [];
+  final raw = await ref.read(apiClientProvider).myLinks(token: token);
+  return raw.map((e) => CoachLink.fromJson(e as Map<String, dynamic>)).toList();
+});
+
+bool _locked(Ref ref, bool Function(CoachLink) permission) {
+  final links = ref.watch(coachLinksProvider).value;
+  // Sin red se usa la última bandera que mandó el servidor al iniciar sesión.
+  if (links == null) {
+    return ref.watch(authControllerProvider).user?.isGuidedMode ?? false;
+  }
+  return links.any((l) => l.isActive && permission(l));
+}
+
+/// true si un profesional administra las rutinas: bloquea su edición (UI).
 final isGuidedModeProvider = Provider<bool>(
-  (ref) => ref.watch(authControllerProvider).user?.isGuidedMode ?? false,
+  (ref) => _locked(ref, (l) => l.manageRoutines),
+);
+
+/// true si un profesional fija los macros: el backend responde 403 al PATCH.
+final macrosLockedProvider = Provider<bool>(
+  (ref) => _locked(ref, (l) => l.setMacros),
 );
 
 final authControllerProvider = NotifierProvider<AuthController, AuthState>(
@@ -201,15 +223,21 @@ class AuthController extends Notifier<AuthState> {
     }
   }
 
-  /// Vínculo con el profesional. En modo guiado el coach fija los macros y
-  /// el backend rechaza (403) cualquier PATCH de macros del usuario.
-  Future<String?> setGuidedMode(bool guided) async {
+  /// "Validarme como profesional". Devuelve el error, o `null` si salió bien.
+  Future<String?> becomeProfessional({
+    required String displayName,
+    required String specialty,
+  }) async {
     final token = _token;
     if (token == null) return 'Sesión expirada. Inicia sesión de nuevo.';
     try {
       final res = await ref
           .read(apiClientProvider)
-          .setGuidedMode(token: token, guided: guided);
+          .becomeProfessional(
+            token: token,
+            displayName: displayName,
+            specialty: specialty,
+          );
       final updated = AuthUser.fromJson(res['user'] as Map<String, dynamic>);
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_userKey, jsonEncode(updated.toJson()));

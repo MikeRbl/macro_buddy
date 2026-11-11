@@ -39,6 +39,23 @@ export function errorResponse(e: unknown): NextResponse {
   throw e;
 }
 
+/**
+ * Lee `{ displayName, specialty, licenseId? }` del cliente.
+ * `undefined` si no viene; `null` si viene mal.
+ */
+export function parseProfessionalProfile(raw: unknown) {
+  if (!raw || typeof raw !== "object") return undefined;
+  const p = raw as Record<string, unknown>;
+  const display_name = String(p.displayName ?? "").trim().slice(0, 80);
+  const specialty = String(p.specialty ?? "") as CoachRole;
+  if (!display_name || !COACH_ROLES.includes(specialty)) return null;
+  return {
+    display_name,
+    specialty,
+    license_id: String(p.licenseId ?? "").trim().slice(0, 40) || undefined,
+  };
+}
+
 /** Permisos desde el JSON del cliente (camelCase). Ver datos va activo por defecto. */
 export function parsePermissions(raw: unknown): Permissions {
   const o = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;

@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../core/models/user.dart';
 import '../../core/widgets/build_footer.dart';
 import '../../core/widgets/glass_card.dart';
 import '../../core/widgets/mb_icon.dart';
@@ -11,6 +10,8 @@ import '../dashboard/dashboard_provider.dart';
 import '../navigation/shortcuts_sheet.dart';
 import '../nutrition/my_foods_screen.dart';
 import 'about_screen.dart';
+import 'become_professional_dialog.dart';
+import 'coach_card.dart';
 import 'edit_profile_screen.dart';
 
 /// Tab de Perfil: atleta, vínculo con el entrenador y configuración.
@@ -81,7 +82,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     final user = ref.watch(authControllerProvider).user;
     final username = user?.username ?? '';
     final streak = _streak();
-    final guided = user?.isGuidedMode ?? false;
+    final guided =
+        ref.watch(macrosLockedProvider) || ref.watch(isGuidedModeProvider);
 
     return Scaffold(
       body: SafeArea(
@@ -217,7 +219,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               ),
               const SizedBox(height: 20),
               // ── Mi Entrenador (modo guiado) ───────────────────────────
-              _CoachCard(user: user),
+              const CoachCard(),
               const SizedBox(height: 20),
               // ── Configuración ────────────────────────────────────────
               _SectionLabel('CONFIGURACIÓN'),
@@ -258,6 +260,28 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                       Icons.restaurant_outlined,
                       'Mis alimentos',
                       () => _push(const MyFoodsScreen()),
+                    ),
+                    Divider(height: 1, color: c.input),
+                    ListTile(
+                      leading: const Icon(
+                        Icons.verified_outlined,
+                        color: AppColors.tertiaryPurple,
+                      ),
+                      title: Text(
+                        user?.isProfessional ?? false
+                            ? 'Cuenta profesional'
+                            : '¿Eres coach o profesional de nutrición?',
+                        style: TextStyle(color: c.textPrimary, fontSize: 16),
+                      ),
+                      subtitle: Text(
+                        user?.isProfessional ?? false
+                            ? 'Administra a tus pacientes desde la versión web.'
+                            : 'Presiona aquí para validarte como profesional.',
+                        style: TextStyle(color: c.textSecondary, fontSize: 12),
+                      ),
+                      onTap: user?.isProfessional ?? false
+                          ? null
+                          : () => showBecomeProfessionalDialog(context),
                     ),
                     Divider(height: 1, color: c.input),
                     _settingsTile(
@@ -339,156 +363,6 @@ class _SectionLabel extends StatelessWidget {
         fontSize: 11,
         fontWeight: FontWeight.w800,
         letterSpacing: 1,
-      ),
-    );
-  }
-}
-
-/// Tarjeta "Mi Entrenador": estado del vínculo con el profesional.
-/// Con el modo guiado activo los macros los fija el coach (el backend
-/// responde 403 a cualquier PATCH de macros) y la edición de rutinas
-/// queda deshabilitada en la app.
-class _CoachCard extends ConsumerStatefulWidget {
-  const _CoachCard({required this.user});
-
-  final AuthUser? user;
-
-  @override
-  ConsumerState<_CoachCard> createState() => _CoachCardState();
-}
-
-class _CoachCardState extends ConsumerState<_CoachCard> {
-  bool _busy = false;
-
-  Future<void> _toggle(bool toGuided) async {
-    if (_busy) return;
-    setState(() => _busy = true);
-    final error = await ref
-        .read(authControllerProvider.notifier)
-        .setGuidedMode(toGuided);
-    if (!mounted) return;
-    setState(() => _busy = false);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        backgroundColor: ThemeColors.dark.card,
-        content: Text(
-          error ??
-              (toGuided
-                  ? 'Profesional vinculado: modo guiado activo.'
-                  : 'Modo guiado desactivado.'),
-          style: TextStyle(color: ThemeColors.dark.textPrimary),
-        ),
-      ),
-    );
-  }
-
-  Widget _lockChip({required bool locked, required String text}) {
-    const c = ThemeColors.dark;
-    final color = locked ? AppColors.tertiaryPurple : c.textSecondary;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: locked
-            ? AppColors.tertiaryPurple.withValues(alpha: 0.14)
-            : ThemeColors.dark.input,
-        borderRadius: BorderRadius.circular(99),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(locked ? Icons.lock : Icons.lock_open, size: 12, color: color),
-          const SizedBox(width: 4),
-          Text(text, style: TextStyle(color: color, fontSize: 10)),
-        ],
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    const c = ThemeColors.dark;
-    final guided = widget.user?.isGuidedMode ?? false;
-    final message = guided
-        ? 'Tu entrenador define tus macros y rutinas mientras dure el vínculo.'
-        : 'Sin entrenador vinculado. Al vincular, el coach fija tus macros '
-              'y la edición de rutinas queda deshabilitada.';
-
-    return Container(
-      decoration: BoxDecoration(
-        // Fondo púrpura profundo del blueprint.
-        color: const Color(0xFF1A1426),
-        borderRadius: BorderRadius.circular(AppColors.radiusCard),
-        border: Border.all(color: AppColors.tertiaryPurple, width: 1),
-      ),
-      padding: const EdgeInsets.all(12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Row(
-            children: [
-              CircleAvatar(
-                radius: 16,
-                backgroundColor: guided
-                    ? AppColors.tertiaryPurple
-                    : ThemeColors.dark.input,
-                foregroundColor: guided ? c.textPrimary : c.textSecondary,
-                child: Icon(guided ? Icons.link : Icons.link_off, size: 18),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  'MI ENTRENADOR',
-                  style: TextStyle(
-                    color: AppColors.tertiaryPurple,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 1,
-                  ),
-                ),
-              ),
-              Text(
-                guided ? 'Activo' : 'Sin vínculo',
-                style: TextStyle(
-                  color: guided ? AppColors.tertiaryPurple : c.textSecondary,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text(message, style: TextStyle(color: c.textSecondary, fontSize: 12)),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              _lockChip(locked: guided, text: 'Macros fijados'),
-              _lockChip(locked: guided, text: 'Rutinas del coach'),
-            ],
-          ),
-          Align(
-            alignment: Alignment.centerRight,
-            child: TextButton(
-              onPressed: _busy ? null : () => _toggle(!guided),
-              child: _busy
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : Text(
-                      guided ? 'Desvincular' : 'Vincular entrenador',
-                      style: TextStyle(
-                        color: guided
-                            ? c.textSecondary
-                            : AppColors.tertiaryPurple,
-                      ),
-                    ),
-            ),
-          ),
-        ],
       ),
     );
   }

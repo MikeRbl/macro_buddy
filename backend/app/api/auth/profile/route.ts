@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { connectDB } from "@/lib/db";
 import User from "@/models/User";
 import { verifyToken, hashPassword, verifyPassword } from "@/lib/auth";
-import { patientLocks } from "@/lib/coach";
+import { parseProfessionalProfile, patientLocks } from "@/lib/coach";
 
 const GENDERS = ["male", "female", "other", "prefer_not_to_say"] as const;
 type Gender = (typeof GENDERS)[number];
@@ -22,6 +22,7 @@ function publicUser(user: {
   target_carbs?: number | null;
   target_fats?: number | null;
   is_guided_mode?: boolean | null;
+  role?: string | null;
 }) {
   return {
     id: user._id.toString(),
@@ -42,6 +43,7 @@ function publicUser(user: {
     targetCarbs: user.target_carbs ?? null,
     targetFats: user.target_fats ?? null,
     isGuidedMode: user.is_guided_mode ?? false,
+    role: user.role ?? "user",
   };
 }
 
@@ -117,6 +119,20 @@ export async function PATCH(req: NextRequest) {
   if (body.targetProtein != null) user.target_protein = Number(body.targetProtein);
   if (body.targetCarbs != null) user.target_carbs = Number(body.targetCarbs);
   if (body.targetFats != null) user.target_fats = Number(body.targetFats);
+  // "Validarme como profesional" desde el perfil de la app.
+  // shortcut: sin verificación de cédula, cualquiera puede marcarse; agrega
+  // revisión manual antes de usarlo fuera del proyecto escolar.
+  const professional = parseProfessionalProfile(body.professional);
+  if (professional === null) {
+    return NextResponse.json(
+      { error: "Escribe tu nombre profesional y elige una especialidad." },
+      { status: 400 }
+    );
+  }
+  if (professional) {
+    user.role = "professional";
+    user.professional_profile = professional;
+  }
   // `isGuidedMode` del cliente se ignora: lo decide el vínculo con el profesional.
 
   if (typeof body.username === "string" && body.username.trim()) {

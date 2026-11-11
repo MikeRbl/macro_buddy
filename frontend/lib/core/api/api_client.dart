@@ -225,27 +225,62 @@ class ApiClient {
     }, token: token);
   }
 
-  /// Vínculo del profesional: activa/desactiva el modo guiado.
-  /// Con el modo activo el backend bloquea (403) la edición de macros.
-  Future<Map<String, dynamic>> setGuidedMode({
+  // ── Vínculo con el profesional ────────────────────────────────────────
+
+  /// Marca la cuenta como profesional (nombre visible y especialidad).
+  Future<Map<String, dynamic>> becomeProfessional({
     required String token,
-    required bool guided,
-  }) {
-    return _patch('/api/auth/profile', {
-      'isGuidedMode': guided,
-    }, token: token);
+    required String displayName,
+    required String specialty,
+  }) => _patch('/api/auth/profile', {
+    'professional': {'displayName': displayName, 'specialty': specialty},
+  }, token: token);
+
+  /// Mis profesionales: vínculos activos y solicitudes pendientes.
+  Future<List<dynamic>> myLinks({required String token}) =>
+      _getList('/api/links/me', token: token);
+
+  /// Canjea el código `MB-XXXX-XX` del profesional.
+  /// `throws: ApiException` (código vencido, ya usado o inválido).
+  Future<Map<String, dynamic>> redeemLinkCode({
+    required String token,
+    required String code,
+  }) => _post('/api/links/redeem', {'code': code}, token: token);
+
+  Future<void> unlinkCoach({
+    required String token,
+    required String linkId,
+  }) async {
+    http.Response res;
+    try {
+      res = await _client
+          .delete(
+            _uri('/api/links/$linkId'),
+            headers: {'Authorization': 'Bearer $token'},
+          )
+          .timeout(const Duration(seconds: 15));
+    } catch (_) {
+      throw const ApiException(
+        'No se pudo conectar con el servidor. Verifica tu conexión.',
+      );
+    }
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      throw ApiException(
+        'No se pudo desvincular (${res.statusCode}).',
+        statusCode: res.statusCode,
+      );
+    }
   }
 
-Future<Map<String, dynamic>> createWorkout({
+  Future<Map<String, dynamic>> createWorkout({
     required String token,
     required String name,
     required List<Map<String, dynamic>> exercises,
   }) {
-    return _post(
-      '/api/workouts',
-      {'name': name, 'exercises': exercises},
-      token: token,
-    );
+    return _post('/api/workouts', {
+      'name': name,
+      'exercises': exercises,
+    }, token: token);
   }
 
   Future<List<dynamic>> fetchWorkouts({required String token}) {
@@ -318,11 +353,9 @@ Future<Map<String, dynamic>> createWorkout({
     required String token,
     required List<String> workoutIds,
   }) {
-    return _put(
-      '/api/workouts/reorder',
-      {'workoutIds': workoutIds},
-      token: token,
-    );
+    return _put('/api/workouts/reorder', {
+      'workoutIds': workoutIds,
+    }, token: token);
   }
 
   Future<List<dynamic>> fetchUserWorkouts({required String token}) {
