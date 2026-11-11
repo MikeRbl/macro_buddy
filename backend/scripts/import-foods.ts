@@ -172,7 +172,8 @@ async function upsert(candidates: CatalogCandidate[]) {
         updateOne: {
           filter: { import_key: p.key },
           update: {
-            $pull: { barcodes: { $in: p.codes } },
+            // El driver tipa $pull contra Document genérico y rechaza el campo.
+            $pull: { barcodes: { $in: p.codes } } as never,
             // Si se quedó sin ningún código, ese alimento ya vive en otro grupo.
             $set: {
               version: version++,

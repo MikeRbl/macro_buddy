@@ -21,7 +21,9 @@ export async function GET(req: NextRequest) {
   const limit = Math.min(200, Math.max(1, Number(searchParams.get("limit") ?? 50) || 50));
 
   await connectDB();
-  const docs = await FoodContribution.find({ status })
+  const docs = await FoodContribution.find({
+    status: status as "pending" | "approved" | "rejected",
+  })
     .sort({ createdAt: status === "pending" ? 1 : -1 })
     .limit(limit)
     .exec();

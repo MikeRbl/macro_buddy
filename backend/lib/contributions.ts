@@ -2,7 +2,9 @@ import mongoose from "mongoose";
 import { macrosAgree, median, normalizeSearch, round1 } from "@/lib/foods";
 import { reserveVersions } from "@/models/Counter";
 import Food, { findFoodByBarcode } from "@/models/Food";
-import FoodContribution from "@/models/FoodContribution";
+import FoodContribution, {
+  type FoodContribution as FoodContributionData,
+} from "@/models/FoodContribution";
 
 /** Usuarios distintos que deben coincidir para aprobar sin revisión. */
 export const CONSENSUS_MIN = Number(process.env.FOOD_CONSENSUS_MIN ?? 3);
@@ -60,9 +62,7 @@ export interface ApprovalEdits {
   serving_label?: string | null;
 }
 
-type ContributionDoc = NonNullable<
-  Awaited<ReturnType<typeof FoodContribution.findById>>
->;
+type ContributionDoc = mongoose.HydratedDocument<FoodContributionData>;
 
 /**
  * Pasa una contribución al catálogo. Si el código ya existe, actualiza ese
