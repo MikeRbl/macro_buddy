@@ -77,6 +77,12 @@ export async function POST(req: NextRequest) {
       targetFats: user.target_fats ?? null,
       isGuidedMode: user.is_guided_mode ?? false,
       role: user.role ?? "user",
+      professional: user.professional_profile
+        ? {
+            displayName: user.professional_profile.display_name,
+            specialty: user.professional_profile.specialty,
+          }
+        : null,
     },
   });
 }

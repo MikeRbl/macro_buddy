@@ -9,6 +9,7 @@
     "lint": "eslint",
     "test": "tsx --test tests/*.test.ts",
     "seed": "tsx scripts/seed.ts",
+    "seed:demo": "tsx scripts/seed-demo.ts",
     "import:foods": "tsx scripts/import-foods.ts",
     "export:catalog": "tsx scripts/export-catalog.ts"
   },
@@ -17,6 +18,7 @@
     "jsonwebtoken": "^9.0.3",
     "mongoose": "^9.9.4",
     "next": "16.3.3",
+    "qrcode": "^1.5.4",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "ws": "^8.21.3"
@@ -26,6 +28,7 @@
     "@types/bcryptjs": "^2.4.6",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^20",
+    "@types/qrcode": "^1.5.6",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@types/ws": "^8.18.1",
