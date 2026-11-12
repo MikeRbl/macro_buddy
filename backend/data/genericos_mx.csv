@@ -1,1 +1,120 @@
 name,kcal,protein,carbs,fat,base_unit,servings,popularity,source_ref
+Mango,60,0.8,15,0.4,g,1 pieza:200|1 taza en cubos:165,,USDA 169910
+Mango ataulfo,65,0.8,16,0.4,g,1 pieza:150,,USDA 169910
+Plátano,89,1.1,22.8,0.3,g,1 pieza mediana:118,,USDA 173944
+Manzana,52,0.3,13.8,0.2,g,1 pieza mediana:180,,USDA 171688
+Naranja,47,0.9,11.8,0.1,g,1 pieza:130,,USDA 169097
+Mandarina,53,0.8,13.3,0.3,g,1 pieza:88,,USDA 169105
+Papaya,43,0.5,10.8,0.3,g,1 taza en cubos:145,,USDA 169926
+Piña,50,0.5,13.1,0.1,g,1 taza en cubos:165,,USDA 169124
+Sandía,30,0.6,7.6,0.2,g,1 taza en cubos:152,,USDA 167765
+Melón,34,0.8,8.2,0.2,g,1 taza en cubos:160,,USDA 169092
+Fresa,32,0.7,7.7,0.3,g,1 taza:150,,USDA 167762
+Uva,69,0.7,18.1,0.2,g,1 taza:150,,USDA 174683
+Pera,57,0.4,15.2,0.1,g,1 pieza:178,,USDA 169118
+Guayaba,68,2.6,14.3,1,g,1 pieza:55,,USDA 173044
+Kiwi,61,1.1,14.7,0.5,g,1 pieza:69,,USDA 168153
+Arándanos,57,0.7,14.5,0.3,g,1 taza:148,,USDA 171711
+Durazno,39,0.9,9.5,0.3,g,1 pieza:150,,USDA 169928
+Limón,29,1.1,9.3,0.3,g,1 pieza:60,,USDA 167746
+Aguacate,160,2,8.5,14.7,g,1 pieza mediana:150|1/2 pieza:75,,USDA 171705
+Jitomate,18,0.9,3.9,0.2,g,1 pieza:120,,USDA 170457
+Cebolla,40,1.1,9.3,0.1,g,1 pieza mediana:110,,USDA 170000
+Lechuga,15,1.4,2.9,0.2,g,1 taza:47,,USDA 169248
+Espinaca,23,2.9,3.6,0.4,g,1 taza:30,,USDA 168462
+Brócoli,34,2.8,6.6,0.4,g,1 taza:91,,USDA 170379
+Zanahoria,41,0.9,9.6,0.2,g,1 pieza:61,,USDA 170393
+Pepino,15,0.7,3.6,0.1,g,1 pieza:200,,USDA 168409
+Calabacita,17,1.2,3.1,0.3,g,1 pieza:200,,USDA 169291
+Nopal,16,1.3,3.3,0.1,g,1 pieza:90|1 taza:150,,USDA 169386
+Chile jalapeño,29,0.9,6.5,0.4,g,1 pieza:14,,USDA 168576
+Chile poblano,20,0.9,4.6,0.2,g,1 pieza:120,,USDA 170108
+Pimiento morrón,26,1,6,0.3,g,1 pieza:120,,USDA 170108
+Champiñones,22,3.1,3.3,0.3,g,1 taza:70,,USDA 169251
+Elote,86,3.3,19,1.4,g,1 pieza:100,,USDA 169998
+Papa cocida,87,1.9,20.1,0.1,g,1 pieza mediana:170,,USDA 170032
+Camote cocido,90,2,20.7,0.2,g,1 pieza:150,,USDA 168483
+Ejotes,31,1.8,7,0.2,g,1 taza:100,,USDA 169961
+Chícharos,81,5.4,14.5,0.4,g,1 taza:145,,USDA 170419
+Huevo entero,143,12.6,0.7,9.5,g,1 pieza:50,,USDA 171287
+Claras de huevo,52,10.9,0.7,0.2,g,1 clara:33|1 taza:243,,USDA 172183
+Yema de huevo,322,15.9,3.6,26.5,g,1 yema:17,,USDA 172184
+Pechuga de pollo cocida,165,31,0,3.6,g,1 pieza:120|100 g:100,,USDA 171477
+Pechuga de pollo cruda,120,22.5,0,2.6,g,1 pieza:170,,USDA 171077
+Muslo de pollo cocido,209,26,0,10.9,g,1 pieza:70,,USDA 172384
+Carne molida de res 90/10 cocida,217,26.1,0,11.8,g,100 g:100,,USDA 174036
+Bistec de res cocido,250,26,0,15,g,1 bistec:120,,USDA 174752
+Arrachera cocida,233,28,0,13,g,1 porción:150,,USDA 174172
+Carne de cerdo lomo cocido,242,27.3,0,13.9,g,1 porción:120,,USDA 167873
+Atún en agua escurrido,116,25.5,0,0.8,g,1 lata escurrida:120,,USDA 171986
+Salmón cocido,206,22.1,0,12.4,g,1 filete:150,,USDA 175168
+Tilapia cocida,128,26.2,0,2.7,g,1 filete:87,,USDA 175177
+Camarón cocido,99,24,0.2,0.3,g,1 taza:145,,USDA 175180
+Pechuga de pavo rebanada,104,17,2,3,g,1 rebanada:20,,SMAE
+Jamón de pavo,110,16,3,3.5,g,1 rebanada:20,,SMAE
+Salchicha de pavo,180,12,4,13,g,1 pieza:40,,SMAE
+Chorizo,455,24,2,38,g,1 porción:40,,USDA 174536
+Tocino cocido,541,37,1.4,42,g,1 tira:8,,USDA 168322
+Tortilla de maíz,218,5.7,44.6,2.9,g,1 pieza:30,,USDA 175037
+Tortilla de harina,312,8.3,51,8,g,1 pieza:45,,USDA 175036
+Arroz blanco cocido,130,2.7,28.2,0.3,g,1 taza:158,,USDA 168878
+Arroz integral cocido,123,2.7,25.6,1,g,1 taza:195,,USDA 168876
+Frijoles negros cocidos,132,8.9,23.7,0.5,g,1 taza:172|1/2 taza:86,,USDA 173735
+Frijoles pintos cocidos,143,9,26.2,0.7,g,1 taza:171,,USDA 175200
+Frijoles refritos,91,5.5,15,1.2,g,1/2 taza:120,,USDA 175201
+Lentejas cocidas,116,9,20.1,0.4,g,1 taza:198,,USDA 172421
+Garbanzos cocidos,164,8.9,27.4,2.6,g,1 taza:164,,USDA 173757
+Avena en hojuelas,379,13.2,67.7,6.5,g,1/2 taza:40|1 taza:80,,USDA 173904
+Pan blanco de caja,265,9,49,3.2,g,1 rebanada:25,,USDA 174924
+Pan integral de caja,252,12.5,42.7,3.5,g,1 rebanada:28,,USDA 172686
+Bolillo,270,9,52,2.5,g,1 pieza:70,,SMAE
+Pasta cocida,158,5.8,30.9,0.9,g,1 taza:140,,USDA 168928
+Pasta seca,371,13,74.7,1.5,g,1 porción:85,,USDA 169736
+Cereal de maíz (hojuelas),357,7.5,84,0.4,g,1 taza:28,,USDA 173208
+Granola,471,10,64,20,g,1/2 taza:60,,USDA 173895
+Papas fritas a la francesa,312,3.4,41.4,15,g,1 porción mediana:117,,USDA 170698
+Tostada horneada,400,8,77,6,g,1 pieza:12,,SMAE
+Totopos,489,7.8,63.4,23.4,g,1 porción:28,,USDA 174008
+Leche entera,61,3.2,4.8,3.3,ml,1 vaso:240,,USDA 171265
+Leche semidescremada,50,3.3,4.8,2,ml,1 vaso:240,,USDA 171269
+Leche descremada,34,3.4,5,0.1,ml,1 vaso:240,,USDA 171269
+Leche de almendra sin azúcar,15,0.6,0.6,1.1,ml,1 vaso:240,,USDA 174832
+Yogur griego natural,59,10.2,3.6,0.4,g,1 vaso:170,,USDA 170903
+Yogur natural,61,3.5,4.7,3.3,g,1 vaso:150,,USDA 171284
+Queso panela,231,18,3,16,g,1 rebanada:30,,SMAE
+Queso fresco,299,18,4,23,g,1 rebanada:30,,USDA 173418
+Queso Oaxaca,320,23,3,24,g,1 porción:30,,SMAE
+Queso cottage,98,11.1,3.4,4.3,g,1/2 taza:113,,USDA 172179
+Queso manchego,376,25,1.5,30,g,1 rebanada:20,,SMAE
+Crema,292,2.4,3.9,30,g,1 cucharada:15,,SMAE
+Mantequilla,717,0.9,0.1,81.1,g,1 cucharadita:5,,USDA 173410
+Aceite de oliva,884,0,0,100,ml,1 cucharada:13|1 cucharadita:4.5,,USDA 171413
+Aceite vegetal,884,0,0,100,ml,1 cucharada:13,,USDA 172336
+Crema de cacahuate,588,25,20,50,g,1 cucharada:16,,USDA 172470
+Cacahuates,567,25.8,16.1,49.2,g,1 puñado:28,,USDA 172430
+Almendras,579,21.2,21.6,49.9,g,1 puñado:28,,USDA 170567
+Nueces,654,15.2,13.7,65.2,g,1 puñado:28,,USDA 170187
+Semillas de chía,486,16.5,42.1,30.7,g,1 cucharada:12,,USDA 170554
+Proteína en polvo whey,400,80,8,6,g,1 scoop:30,,Promedio comercial
+Azúcar,387,0,100,0,g,1 cucharadita:4,,USDA 169655
+Miel,304,0.3,82.4,0,g,1 cucharada:21,,USDA 169640
+Mermelada,250,0.4,62,0.1,g,1 cucharada:20,,USDA 167900
+Chocolate oscuro 70%,598,7.8,45.9,42.6,g,1 cuadro:10,,USDA 170273
+Café negro,2,0.1,0,0,ml,1 taza:240,,USDA 171890
+Refresco de cola,42,0,10.6,0,ml,1 lata:355,,USDA 171870
+Jugo de naranja,45,0.7,10.4,0.2,ml,1 vaso:240,,USDA 169098
+Salsa verde,30,1,6,0.3,g,1 cucharada:15,,SMAE
+Guacamole,155,2,8.5,13.5,g,2 cucharadas:30,,USDA 174519
+Mayonesa,680,1,0.6,75,g,1 cucharada:14,,USDA 171009
+Cátsup,101,1,27,0.1,g,1 cucharada:17,,USDA 168556
+Taco de pastor,215,11,18,11,g,1 taco:80,,Estimado
+Taco de bistec,200,13,17,9,g,1 taco:80,,Estimado
+Quesadilla de queso,290,12,26,15,g,1 pieza:100,,Estimado
+Tamal de pollo,215,7,24,10.5,g,1 pieza:150,,Estimado
+Chilaquiles verdes,180,5,20,9,g,1 plato:250,,Estimado
+Enchiladas verdes de pollo,170,10,15,8,g,1 orden:300,,Estimado
+Pozole rojo,85,6,8,3,g,1 plato:500,,Estimado
+Sopa de fideo,60,1.5,9,2,g,1 plato:250,,Estimado
+Hot cakes,227,6.4,28.3,9.7,g,1 pieza:77,,USDA 172277
+Pizza de pepperoni,298,12.4,33.6,12.6,g,1 rebanada:107,,USDA 174851
+Hamburguesa sencilla,254,13,30,9.5,g,1 pieza:110,,USDA 170720

@@ -6,6 +6,7 @@ import { WebSocketServer, WebSocket } from "ws";
 import { loadEnv } from "./lib/loadEnv";
 import { verifyToken } from "./lib/auth";
 import UserWorkout from "./models/UserWorkout";
+import { seedGenericFoods } from "./lib/catalogStore";
 
 loadEnv();
 
@@ -228,6 +229,10 @@ async function main(): Promise<void> {
   });
 
   const wss = new WebSocketServer({ noServer: true });
+  // Next usa su propio WebSocket (/_next/webpack-hmr, /_next/hmr) para
+  // recargar la página en desarrollo. Si se cierra, la web se queda en
+  // blanco: el navegador nunca termina de cargar los componentes.
+  const nextUpgrade = app.getUpgradeHandler();
 
   server.on("upgrade", (req, socket, head) => {
     const { pathname } = parse(req.url ?? "", true);
@@ -235,6 +240,8 @@ async function main(): Promise<void> {
       wss.handleUpgrade(req, socket, head, (ws) => {
         wss.emit("connection", ws, req);
       });
+    } else if (pathname?.startsWith("/_next/")) {
+      nextUpgrade(req, socket, head);
     } else {
       socket.destroy();
     }
@@ -290,6 +297,15 @@ async function main(): Promise<void> {
       })
     );
   });
+
+  // Alimentos básicos (mango, huevo, tortilla...): sin esto la búsqueda
+  // sale vacía mientras no se importe el catálogo de OpenFoodFacts.
+  seedGenericFoods()
+    .then((r) => {
+      if (r.written) console.log(`> Catálogo: ${r.written} alimentos genéricos cargados`);
+      for (const e of r.errors) console.warn(`> Catálogo: ${e}`);
+    })
+    .catch((err: Error) => console.warn(`> Catálogo: no se cargaron los genéricos (${err.message})`));
 
   server.listen(port, "0.0.0.0", () => {
     console.log(`> Macrobuddy server ready on http://localhost:${port}`);
