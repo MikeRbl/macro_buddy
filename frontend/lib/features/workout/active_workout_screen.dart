@@ -14,8 +14,10 @@ import '../auth/auth_controller.dart';
 import '../community/community_provider.dart';
 import '../create_program/add_exercises_sheet.dart';
 import '../dashboard/dashboard_provider.dart';
+import '../workouts/workouts_provider.dart';
 import 'exercise_info_sheet.dart';
 import 'workout_models.dart';
+import 'workout_ui.dart';
 
 class _SetRow {
   _SetRow({this.warmup = false});
@@ -24,18 +26,26 @@ class _SetRow {
   String reps = '';
   String rir = '';
   bool done = false;
-  final bool warmup;
+  bool warmup;
 }
+
+/// Celda editable de una serie.
+enum _Field { weight, reps }
 
 class ActiveWorkoutScreen extends ConsumerStatefulWidget {
   const ActiveWorkoutScreen({
     super.key,
     required this.exercises,
     this.workoutName,
+    this.planId,
   });
 
   final List<PreviewExercise> exercises;
   final String? workoutName;
+
+  /// Entrenamiento del programa que se está haciendo (si aplica). Al
+  /// guardar se marca como hecho esta semana.
+  final String? planId;
 
   @override
   ConsumerState<ActiveWorkoutScreen> createState() =>
@@ -55,6 +65,14 @@ class _ActiveWorkoutScreenState extends ConsumerState<ActiveWorkoutScreen> {
   String _sessionNote = '';
   bool _saving = false;
   List<WorkoutSession> _history = [];
+
+  /// Celda seleccionada para el teclado numérico (null = teclado oculto).
+  ({int row, _Field field})? _sel;
+
+  /// La primera tecla tras seleccionar reemplaza el valor (como "seleccionar
+  /// todo"); las siguientes lo extienden.
+  bool _replaceOnType = true;
+  final Map<int, GlobalKey> _rowKeys = {};
 
   PreviewExercise? get _current =>
       _currentIndex < _exercises.length ? _exercises[_currentIndex] : null;
@@ -269,6 +287,10 @@ class _ActiveWorkoutScreenState extends ConsumerState<ActiveWorkoutScreen> {
     }
 
     ref.invalidate(dashboardProvider);
+    final planId = widget.planId;
+    if (planId != null) {
+      await ref.read(workoutProvider.notifier).markDone(planId);
+    }
     ref.read(communityProvider.notifier).postWorkout(
           widget.workoutName ?? 'Entrenamiento libre',
           workoutId: workoutId,
@@ -389,55 +411,73 @@ class _ActiveWorkoutScreenState extends ConsumerState<ActiveWorkoutScreen> {
     }
   }
 
-  String _previousText(int index) {
-    final row = _rows[_currentIndex][index];
-    final exercise = _exercises[_currentIndex];
-    for (final session in _history) {
-      for (final set in session.sets.reversed) {
-        final matchesId = set.exerciseId != null && set.exerciseId == exercise.id;
-        final matchesName = set.exerciseName != null && set.exerciseName == exercise.name;
-        if (!matchesId && !matchesName) continue;
-        if (set.isWarmup != row.warmup) continue;
-        if (exercise.isBodyweight) {
-          return '${set.reps ?? '—'} reps\nRIR ${set.rir ?? 0}';
-        } else {
-          return '${set.weight ?? '—'} lb x ${set.reps ?? '—'}\nRIR ${set.rir ?? 0}';
-        }
+  /// Series de la última sesión en la que apareció este ejercicio.
+  List<WorkoutSessionSet> _previousSetsFor(PreviewExercise exercise) {
+    final sessions = List.of(_history)
+      ..sort((a, b) => b.date.compareTo(a.date));
+    for (final session in sessions) {
+      final matches = session.sets.where((set) {
+        final byId = set.exerciseId != null && set.exerciseId == exercise.id;
+        final byName =
+            set.exerciseName != null && set.exerciseName == exercise.name;
+        return byId || byName;
+      }).toList();
+      if (matches.isNotEmpty) {
+        matches.sort((a, b) => a.setNumber.compareTo(b.setNumber));
+        return matches;
       }
     }
-    return '—';
+    return const [];
   }
 
-  void _copyPrevious(int index, _SetRow row, bool bodyweight) {
-    final text = _previousText(index);
-    if (text.isEmpty || text == '—') return;
-    if (!row.warmup) {
-      final rirMatch = RegExp(r'RIR\s*(\d+)').firstMatch(text);
-      if (rirMatch != null) row.rir = rirMatch.group(1)!;
-    }
-    if (bodyweight) {
-      final repsMatch = RegExp(r'(\d+)\s*reps').firstMatch(text);
-      if (repsMatch != null) row.reps = repsMatch.group(1)!;
-    } else {
-      final weightMatch = RegExp(r'(\d+)\s*lb').firstMatch(text);
-      if (weightMatch != null) row.weight = weightMatch.group(1)!;
-      final repsMatch = RegExp(r'x\s*(\d+)').firstMatch(text);
-      if (repsMatch != null) row.reps = repsMatch.group(1)!;
-    }
-    setState(() {});
+  /// Serie equivalente de la sesión anterior: la N-ésima de calentamiento
+  /// o la N-ésima efectiva, según el tipo de la fila.
+  WorkoutSessionSet? _previousFor(
+    List<_SetRow> rows,
+    int index,
+    List<WorkoutSessionSet> previous,
+  ) {
+    final row = rows[index];
+    final ordinal = rows.take(index).where((r) => r.warmup == row.warmup).length;
+    final same = previous.where((s) => s.isWarmup == row.warmup).toList();
+    return ordinal < same.length ? same[ordinal] : null;
   }
 
-  void _onSetChecked(_SetRow row, bool bodyweight) {
+  void _copyPrevious(_SetRow row, WorkoutSessionSet? prev, bool bodyweight) {
+    if (prev == null) return;
+    setState(() {
+      if (!bodyweight && prev.weight != null) {
+        row.weight = _fmtWeight(prev.weight!);
+      }
+      if (prev.reps != null) row.reps = '${prev.reps}';
+      if (!row.warmup && prev.rir != null) row.rir = '${prev.rir}';
+    });
+  }
+
+  /// Marca/desmarca una serie. Si faltan datos pero hay referencia de la
+  /// sesión anterior, la usa (como hacen los placeholders grises).
+  /// Devuelve true si la serie quedó completada.
+  bool _onSetChecked(_SetRow row, bool bodyweight, WorkoutSessionSet? prev) {
     if (row.done) {
       setState(() => row.done = false);
-      return;
+      return false;
+    }
+    if (prev != null) {
+      if (row.reps.trim().isEmpty && prev.reps != null) {
+        row.reps = '${prev.reps}';
+      }
+      if (!bodyweight && row.weight.trim().isEmpty && prev.weight != null) {
+        row.weight = _fmtWeight(prev.weight!);
+      }
     }
     if (row.reps.trim().isEmpty || (!bodyweight && row.weight.trim().isEmpty)) {
       final messenger = ScaffoldMessenger.of(context);
       messenger.hideCurrentSnackBar();
       messenger.showSnackBar(
         SnackBar(
-          content: const Text('Ingresa peso y repeticiones'),
+          content: Text(
+            bodyweight ? 'Ingresa las repeticiones' : 'Ingresa peso y repeticiones',
+          ),
           duration: const Duration(seconds: 2),
           behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(
@@ -445,21 +485,153 @@ class _ActiveWorkoutScreenState extends ConsumerState<ActiveWorkoutScreen> {
           ),
         ),
       );
-      return;
+      return false;
     }
+    HapticFeedback.lightImpact();
     setState(() {
       row.done = true;
       if (!row.warmup) _startRest();
     });
     if (_rows[_currentIndex].every((r) => r.done) &&
         _currentIndex < _exercises.length - 1) {
-      setState(() => _currentIndex += 1);
+      _goTo(_currentIndex + 1);
+    }
+    return true;
+  }
+
+  void _goTo(int index) {
+    setState(() {
+      _currentIndex = index;
+      _sel = null;
+      _rowKeys.clear();
+    });
+  }
+
+  // --- Teclado numérico --------------------------------------------------
+
+  String _valueOf(_SetRow row, _Field f) =>
+      f == _Field.weight ? row.weight : row.reps;
+
+  void _setValue(_SetRow row, _Field f, String v) {
+    if (f == _Field.weight) {
+      row.weight = v;
+    } else {
+      row.reps = v;
+    }
+  }
+
+  void _select(int row, _Field field) {
+    setState(() {
+      _sel = (row: row, field: field);
+      _replaceOnType = true;
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final ctx = _rowKeys[row]?.currentContext;
+      if (ctx != null && ctx.mounted) {
+        Scrollable.ensureVisible(
+          ctx,
+          alignment: 0.4,
+          duration: const Duration(milliseconds: 200),
+        );
+      }
+    });
+  }
+
+  _SetRow? get _selectedRow {
+    final sel = _sel;
+    if (sel == null || _current == null) return null;
+    final rows = _rows[_currentIndex];
+    return sel.row < rows.length ? rows[sel.row] : null;
+  }
+
+  void _onKey(String key) {
+    final sel = _sel;
+    final row = _selectedRow;
+    if (sel == null || row == null) return;
+    var v = _replaceOnType ? '' : _valueOf(row, sel.field);
+    if (key == '.') {
+      if (sel.field == _Field.reps || v.contains('.')) return;
+      v = v.isEmpty ? '0.' : '$v.';
+    } else {
+      if (v.length >= 6) return;
+      v = v == '0' ? key : '$v$key';
+    }
+    setState(() {
+      _replaceOnType = false;
+      _setValue(row, sel.field, v);
+    });
+  }
+
+  void _onBackspace() {
+    final sel = _sel;
+    final row = _selectedRow;
+    if (sel == null || row == null) return;
+    final v = _valueOf(row, sel.field);
+    setState(() {
+      _setValue(
+        row,
+        sel.field,
+        _replaceOnType || v.isEmpty ? '' : v.substring(0, v.length - 1),
+      );
+      _replaceOnType = false;
+    });
+  }
+
+  void _onRir(int rir) {
+    final row = _selectedRow;
+    if (row == null || row.warmup) return;
+    HapticFeedback.selectionClick();
+    setState(() => row.rir = row.rir == '$rir' ? '' : '$rir');
+  }
+
+  /// Avanza: peso → reps → peso de la siguiente serie.
+  void _onNext() {
+    final sel = _sel;
+    final current = _current;
+    if (sel == null || current == null) return;
+    final rows = _rows[_currentIndex];
+    if (sel.field == _Field.weight) {
+      _select(sel.row, _Field.reps);
+      return;
+    }
+    if (sel.row + 1 < rows.length) {
+      _select(
+        sel.row + 1,
+        current.isBodyweight ? _Field.reps : _Field.weight,
+      );
+    } else {
+      setState(() => _sel = null);
+    }
+  }
+
+  /// ✓ del teclado: completa la serie seleccionada y salta a la siguiente
+  /// pendiente.
+  void _onKeypadCheck() {
+    final sel = _sel;
+    final current = _current;
+    final row = _selectedRow;
+    if (sel == null || current == null || row == null) return;
+    final exerciseIndex = _currentIndex;
+    final rows = _rows[exerciseIndex];
+    final prev = _previousFor(rows, sel.row, _previousSetsFor(current));
+    if (!row.done) {
+      final ok = _onSetChecked(row, current.isBodyweight, prev);
+      if (!ok) return;
+    }
+    if (_currentIndex != exerciseIndex) return; // ya pasó al siguiente ejercicio
+    final next = rows.indexWhere((r) => !r.done);
+    if (next == -1) {
+      setState(() => _sel = null);
+    } else {
+      _select(next, current.isBodyweight ? _Field.reps : _Field.weight);
     }
   }
 
   void _removeCurrentExercise() {
     if (_exercises.isEmpty || _currentIndex >= _exercises.length) return;
     setState(() {
+      _sel = null;
+      _rowKeys.clear();
       _exercises.removeAt(_currentIndex);
       _rows.removeAt(_currentIndex);
       if (_currentIndex >= _exercises.length && _currentIndex > 0) {
@@ -469,7 +641,21 @@ class _ActiveWorkoutScreenState extends ConsumerState<ActiveWorkoutScreen> {
   }
 
   void _addWarmupSet() {
-    setState(() => _rows[_currentIndex].insert(0, _SetRow(warmup: true)));
+    if (_current == null) return;
+    setState(() {
+      _sel = null;
+      final rows = _rows[_currentIndex];
+      final firstWorking = rows.indexWhere((r) => !r.warmup);
+      rows.insert(
+        firstWorking == -1 ? rows.length : firstWorking,
+        _SetRow(warmup: true),
+      );
+    });
+  }
+
+  void _addSet() {
+    if (_current == null) return;
+    setState(() => _rows[_currentIndex].add(_SetRow()));
   }
 
   void _completeExercise() {
@@ -483,7 +669,7 @@ class _ActiveWorkoutScreenState extends ConsumerState<ActiveWorkoutScreen> {
     if (rows.any((r) => !r.warmup)) _startRest();
     if (_rows[_currentIndex].every((r) => r.done) &&
         _currentIndex < _exercises.length - 1) {
-      setState(() => _currentIndex += 1);
+      _goTo(_currentIndex + 1);
     }
   }
 
@@ -491,130 +677,236 @@ class _ActiveWorkoutScreenState extends ConsumerState<ActiveWorkoutScreen> {
   Widget build(BuildContext context) {
     final c = ThemeColors.of(context);
     final guided = ref.watch(isGuidedModeProvider);
+    final current = _current;
     final restText = _restSeconds > 0
-        ? 'Descanso ${(_restSeconds ~/ 60).toString().padLeft(1, '0')}:${(_restSeconds % 60).toString().padLeft(2, '0')}'
-        : 'Descanso';
+        ? '${_restSeconds ~/ 60}:${(_restSeconds % 60).toString().padLeft(2, '0')}'
+        : '0:00';
+
+    final selRow = _selectedRow;
 
     return Scaffold(
       appBar: AppBar(
         leading: IconButton(
           onPressed: _showMenu,
           icon: Icon(Icons.menu, color: c.textPrimary),
+          tooltip: 'Menú',
         ),
-        centerTitle: true,
+        titleSpacing: 0,
         title: Text(
           _format(_stopwatch.elapsed),
           style: TextStyle(
             color: c.textPrimary,
             fontSize: 20,
-            fontFeatures: [FontFeature.tabularFigures()],
+            fontFeatures: const [FontFeature.tabularFigures()],
           ),
         ),
         actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 16),
-            child: Center(
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 6,
-                ),
-                decoration: BoxDecoration(
-                  color: _restSeconds > 0 ? AppColors.accentOrange : c.input,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  restText,
-                  style: TextStyle(
-                    color: c.textPrimary,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
+          GestureDetector(
+            onTap: _restSeconds > 0 ? _cancelRest : _startRest,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: _restSeconds > 0 ? AppColors.coral : c.input,
+                borderRadius: BorderRadius.circular(99),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.timer_outlined,
+                    size: 16,
+                    color: _restSeconds > 0
+                        ? AppColors.inkOnAccent
+                        : c.textPrimary,
                   ),
-                ),
+                  const SizedBox(width: 4),
+                  Text(
+                    restText,
+                    style: TextStyle(
+                      color: _restSeconds > 0
+                          ? AppColors.inkOnAccent
+                          : c.textPrimary,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      fontFeatures: const [FontFeature.tabularFigures()],
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
+          const SizedBox(width: 4),
+          TextButton(
+            onPressed: _saving ? null : _finishWorkout,
+            child: const Text(
+              'Terminar',
+              style: TextStyle(
+                color: AppColors.secondaryCyan,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          const SizedBox(width: 4),
         ],
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          _buildCarousel(),
-          const SizedBox(height: 16),
-          if (_current == null) ...[
-            _buildEmptyFreeWorkout(),
+      body: GestureDetector(
+        // Tocar fuera de la tabla cierra el teclado.
+        onTap: _sel == null ? null : () => setState(() => _sel = null),
+        behavior: HitTestBehavior.translucent,
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+          children: [
+            _buildCarousel(),
             const SizedBox(height: 16),
-          ] else ...[
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    _current!.name,
-                    style: TextStyle(
-                      color: c.textPrimary,
-                      fontSize: 28,
-                      fontWeight: FontWeight.bold,
+            if (current == null) ...[
+              _buildEmptyFreeWorkout(),
+              const SizedBox(height: 16),
+            ] else ...[
+              Text(
+                current.name,
+                style: TextStyle(
+                  color: c.textPrimary,
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                  height: 1.15,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                _progressLabel(current),
+                style: TextStyle(color: c.textSecondary, fontSize: 14),
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                height: 38,
+                child: ListView(
+                  key: const ValueKey('exercise-tools'),
+                  scrollDirection: Axis.horizontal,
+                  children: [
+                    _ToolChip(
+                      icon: Icons.info_outline,
+                      label: 'Info',
+                      onTap: _showInfo,
+                    ),
+                    _ToolChip(
+                      icon: Icons.local_fire_department_outlined,
+                      label: 'Calentamiento',
+                      onTap: _addWarmupSet,
+                    ),
+                    // En modo guiado el profesional fija la rutina: fuera
+                    // los chips que la modifican.
+                    if (!guided) ...[
+                      _ToolChip(
+                        icon: Icons.track_changes,
+                        label: 'Objetivos',
+                        onTap: _showTargets,
+                      ),
+                      _ToolChip(
+                        icon: Icons.swap_horiz,
+                        label: 'Cambiar',
+                        onTap: _showSwap,
+                      ),
+                      _ToolChip(
+                        icon: Icons.add,
+                        label: 'Agregar ejercicio',
+                        onTap: _addExercise,
+                      ),
+                    ],
+                    _ToolChip(
+                      icon: Icons.done_all,
+                      label: 'Completar todo',
+                      onTap: _completeExercise,
+                    ),
+                    _ToolChip(
+                      icon: Icons.delete_outline,
+                      label: 'Quitar',
+                      color: AppColors.danger,
+                      onTap: _removeCurrentExercise,
+                    ),
+                  ],
+                ),
+              ),
+              if (_restSeconds > 0) ...[
+                const SizedBox(height: 12),
+                Wrap(
+                  alignment: WrapAlignment.center,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  runSpacing: 8,
+                  children: [
+                    Text(
+                      'Descanso',
+                      style: TextStyle(color: c.textSecondary, fontSize: 13),
+                    ),
+                    const SizedBox(width: 12),
+                    _RestControl(label: '−15s', onTap: () => _adjustRest(-15)),
+                    const SizedBox(width: 8),
+                    _RestControl(label: '+15s', onTap: () => _adjustRest(15)),
+                    const SizedBox(width: 8),
+                    _RestControl(label: 'Saltar', onTap: _cancelRest),
+                  ],
+                ),
+              ],
+              const SizedBox(height: 16),
+              _buildSetTable(),
+            ],
+          ],
+        ),
+      ),
+      bottomNavigationBar: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 180),
+        child: selRow != null
+            ? _NumericKeypad(
+                key: const ValueKey('keypad'),
+                showRir: !selRow.warmup,
+                selectedRir: int.tryParse(selRow.rir),
+                allowDecimal: _sel?.field == _Field.weight,
+                nextLabel: _sel?.field == _Field.weight ? 'Reps' : 'Sig.',
+                onKey: _onKey,
+                onBackspace: _onBackspace,
+                onRir: _onRir,
+                onNext: _onNext,
+                onHide: () => setState(() => _sel = null),
+                onCheck: _onKeypadCheck,
+              )
+            : SafeArea(
+                key: const ValueKey('finish'),
+                top: false,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                  child: SizedBox(
+                    height: 52,
+                    child: ElevatedButton(
+                      onPressed: _saving ? null : _finishWorkout,
+                      child: _saving
+                          ? const SizedBox(
+                              width: 22,
+                              height: 22,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2.5,
+                              ),
+                            )
+                          : const Text('Terminar entrenamiento'),
                     ),
                   ),
                 ),
-                IconButton(
-                  onPressed: _removeCurrentExercise,
-                  icon: const Icon(
-                    Icons.delete_outline,
-                    color: AppColors.danger,
-                  ),
-                  tooltip: 'Eliminar ejercicio',
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-          Row(
-            children: [
-              _ToolChip(label: 'Info', onTap: _showInfo),
-              const SizedBox(width: 8),
-              // En modo guiado el profesional fija la rutina: fuera los
-              // chips que la modifican.
-              if (!guided) ...[
-                _ToolChip(label: 'Objetivos', onTap: _showTargets),
-                const SizedBox(width: 8),
-                _ToolChip(label: 'Cambiar', onTap: _showSwap),
-                const SizedBox(width: 8),
-                _ToolChip(label: 'Agregar', onTap: _addExercise),
-                const SizedBox(width: 8),
-              ],
-              _ToolChip(label: 'Completar', onTap: _completeExercise),
-            ],
-          ),
-            if (_restSeconds > 0) ...[
-              const SizedBox(height: 12),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  _RestControl(label: '−15s', onTap: () => _adjustRest(-15)),
-                  const SizedBox(width: 8),
-                  _RestControl(label: '+15s', onTap: () => _adjustRest(15)),
-                  const SizedBox(width: 8),
-                  _RestControl(label: 'Saltar', onTap: _cancelRest),
-                ],
               ),
-            ],
-            const SizedBox(height: 20),
-            _buildSetTable(),
-          ],
-          const SizedBox(height: 16),
-          ElevatedButton(
-            onPressed: _saving ? null : _finishWorkout,
-            child: _saving
-                ? const SizedBox(
-                    width: 22,
-                    height: 22,
-                    child: CircularProgressIndicator(strokeWidth: 2.5),
-                  )
-                : const Text('Finalizar Entrenamiento'),
-          ),
-        ],
       ),
     );
+  }
+
+  /// "Serie 2 de 4 · Objetivo 8–12 reps".
+  String _progressLabel(PreviewExercise current) {
+    final rows = _rows[_currentIndex];
+    final working = rows.where((r) => !r.warmup).toList();
+    final reps = current.minReps == current.maxReps
+        ? '${current.minReps}'
+        : '${current.minReps}–${current.maxReps}';
+    if (working.isEmpty) return 'Objetivo $reps reps';
+    final doneCount = working.where((r) => r.done).length;
+    final shown = doneCount >= working.length ? working.length : doneCount + 1;
+    final prefix = doneCount >= working.length
+        ? 'Completado · ${working.length} series'
+        : 'Serie $shown de ${working.length}';
+    return '$prefix · Objetivo $reps reps';
   }
 
   Widget _buildEmptyFreeWorkout() {
@@ -652,6 +944,8 @@ class _ActiveWorkoutScreenState extends ConsumerState<ActiveWorkoutScreen> {
       _exercises.add(exercise);
       _rows.add(List.generate(exercise.sets, (_) => _SetRow()));
       _currentIndex = _exercises.length - 1;
+      _sel = null;
+      _rowKeys.clear();
     });
   }
 
@@ -670,7 +964,7 @@ class _ActiveWorkoutScreenState extends ConsumerState<ActiveWorkoutScreen> {
               ? AppColors.accentTeal
               : (selected ? c.textPrimary : Colors.transparent);
           return GestureDetector(
-            onTap: () => setState(() => _currentIndex = index),
+            onTap: () => _goTo(index),
             child: Padding(
               padding: const EdgeInsets.only(right: 10),
               child: Opacity(
@@ -754,6 +1048,7 @@ class _ActiveWorkoutScreenState extends ConsumerState<ActiveWorkoutScreen> {
         maxReps: result.maxReps,
         rir: result.rir,
       );
+      _sel = null;
       _rows[_currentIndex] = List.generate(result.sets, (_) => _SetRow());
     });
   }
@@ -778,6 +1073,7 @@ class _ActiveWorkoutScreenState extends ConsumerState<ActiveWorkoutScreen> {
     );
     setState(() {
       _exercises[_currentIndex] = updated;
+      _sel = null;
       _rows[_currentIndex] = List.generate(updated.sets, (_) => _SetRow());
     });
   }
@@ -892,85 +1188,159 @@ class _ActiveWorkoutScreenState extends ConsumerState<ActiveWorkoutScreen> {
     if (current == null) return const SizedBox.shrink();
     final bodyweight = current.isBodyweight;
     final rows = _rows[_currentIndex];
-    return Material(
-      color: c.card,
-      borderRadius: BorderRadius.circular(AppColors.radiusCard),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          children: [
-            _suggestionBanner(context, c, current, bodyweight),
-            _headerRow(bodyweight),
-            Divider(height: 20, color: c.input),
-            for (var i = 0; i < rows.length; i++)
-              Dismissible(
-                key: ValueKey(rows[i]),
-                direction: DismissDirection.endToStart,
-                onDismissed: (_) =>
-                    setState(() => _rows[_currentIndex].removeAt(i)),
-                background: Container(
-                  alignment: Alignment.centerRight,
-                  padding: const EdgeInsets.only(right: 20),
-                  decoration: BoxDecoration(
-                    color: AppColors.danger,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Icon(Icons.delete, color: c.textPrimary),
-                ),
-                child: Opacity(
-                  opacity: rows[i].warmup && rows[i].done
-                      ? 0.35
-                      : (rows[i].done ? 0.6 : 1.0),
-                  child: _setRow(i, rows[i], bodyweight),
-                ),
+    final previous = _previousSetsFor(current);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _suggestionBanner(context, c, current, bodyweight),
+        _headerRow(bodyweight),
+        const SizedBox(height: 4),
+        for (var i = 0; i < rows.length; i++)
+          Dismissible(
+            key: ObjectKey(rows[i]),
+            direction: DismissDirection.endToStart,
+            onDismissed: (_) => setState(() {
+              _sel = null;
+              _rows[_currentIndex].removeAt(i);
+            }),
+            background: Container(
+              alignment: Alignment.centerRight,
+              padding: const EdgeInsets.only(right: 20),
+              decoration: BoxDecoration(
+                color: AppColors.danger,
+                borderRadius: BorderRadius.circular(10),
               ),
-            Divider(height: 16, color: c.input),
-            TextButton.icon(
-              onPressed: _addWarmupSet,
-              icon: Icon(Icons.local_fire_department, color: c.textSecondary),
-              label: Text(
-                'Agregar serie de calentamiento (W)',
-                style: TextStyle(color: c.textSecondary),
+              child: Icon(Icons.delete, color: c.textPrimary),
+            ),
+            child: KeyedSubtree(
+              key: _rowKeys.putIfAbsent(i, GlobalKey.new),
+              child: _setRow(
+                rows,
+                i,
+                bodyweight,
+                _previousFor(rows, i, previous),
+                current,
+              ),
+            ),
+          ),
+        const SizedBox(height: 4),
+        Row(
+          children: [
+            Expanded(
+              child: TextButton.icon(
+                onPressed: _addSet,
+                icon: Icon(Icons.add, color: c.textPrimary, size: 18),
+                label: Text(
+                  'Agregar serie',
+                  style: TextStyle(color: c.textPrimary),
+                ),
               ),
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _headerRow(bool bodyweight) {
-    return Row(
-      children: [
-        Expanded(flex: 2, child: _headerText('Serie')),
-        Expanded(flex: 3, child: _headerText('Anterior')),
-        if (!bodyweight) Expanded(flex: 2, child: _headerText('Lb')),
-        Expanded(flex: 2, child: _headerText('Reps')),
-        Expanded(flex: 2, child: _headerText('RIR')),
-        const SizedBox(width: 28),
+        Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: Text(
+            'Toca una casilla para escribir · toca "Anterior" para copiar '
+            'tu última sesión · desliza a la izquierda para borrar una serie.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: c.iconMuted, fontSize: 11),
+          ),
+        ),
       ],
     );
   }
 
-  Widget _setRow(int index, _SetRow row, bool bodyweight) {
-    final c = ThemeColors.of(context);
+  Widget _headerRow(bool bodyweight) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 4),
       child: Row(
         children: [
-          Expanded(
-            flex: 2,
-            child: Container(
-              width: 26,
-              height: 26,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(color: c.input, shape: BoxShape.circle),
-              child: Text(
-                row.warmup ? 'W' : '${index + 1}',
-                style: TextStyle(
-                  color: row.warmup ? AppColors.accentOrange : c.textPrimary,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
+          SizedBox(width: 40, child: _headerText('Serie')),
+          Expanded(flex: 3, child: _headerText('Anterior')),
+          if (!bodyweight) ...[
+            Expanded(flex: 2, child: _headerText('Lb')),
+            const SizedBox(width: 8),
+          ],
+          Expanded(flex: 2, child: _headerText('Reps')),
+          const SizedBox(width: 48, child: Icon(Icons.check, size: 16)),
+        ],
+      ),
+    );
+  }
+
+  Widget _setRow(
+    List<_SetRow> rows,
+    int index,
+    bool bodyweight,
+    WorkoutSessionSet? prev,
+    PreviewExercise current,
+  ) {
+    final c = ThemeColors.of(context);
+    final row = rows[index];
+    final number = rows.take(index + 1).where((r) => !r.warmup).length;
+    final sel = _sel;
+
+    String prevText = '—';
+    if (prev != null) {
+      final w = prev.weight;
+      prevText = bodyweight || w == null
+          ? '${prev.reps ?? '—'} reps'
+          : '${_fmtWeight(w)} lb × ${prev.reps ?? '—'}';
+    }
+
+    // Placeholders grises: lo de la sesión anterior o el objetivo.
+    final weightHint = prev?.weight != null ? _fmtWeight(prev!.weight!) : '';
+    final repsHint = prev?.reps != null
+        ? '${prev!.reps}'
+        : (row.warmup
+              ? ''
+              : (current.minReps == current.maxReps
+                    ? '${current.minReps}'
+                    : '${current.minReps}-${current.maxReps}'));
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 150),
+      margin: const EdgeInsets.symmetric(vertical: 3),
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+      decoration: BoxDecoration(
+        color: row.done
+            ? AppColors.successGreen.withValues(alpha: 0.10)
+            : Colors.transparent,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 40,
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Tooltip(
+                message: 'Toca para cambiar entre serie y calentamiento',
+                child: GestureDetector(
+                  onTap: () => setState(() {
+                    row.warmup = !row.warmup;
+                    if (row.warmup) row.rir = '';
+                  }),
+                  child: Container(
+                    width: 32,
+                    height: 32,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: c.input,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Text(
+                      row.warmup ? 'W' : '$number',
+                      style: TextStyle(
+                        color: row.warmup
+                            ? AppColors.warningAmber
+                            : c.textPrimary,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -978,59 +1348,82 @@ class _ActiveWorkoutScreenState extends ConsumerState<ActiveWorkoutScreen> {
           Expanded(
             flex: 3,
             child: InkWell(
-              onTap: () => _copyPrevious(index, row, bodyweight),
-              borderRadius: BorderRadius.circular(4),
+              onTap: prev == null
+                  ? null
+                  : () => _copyPrevious(row, prev, bodyweight),
+              borderRadius: BorderRadius.circular(6),
               child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 4),
-                child: Text(
-                  _previousText(index),
-                  style: TextStyle(color: c.textSecondary, fontSize: 11),
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                child: Column(
+                  children: [
+                    Text(
+                      prevText,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: c.textSecondary, fontSize: 13),
+                    ),
+                    if (prev?.rir != null && !row.warmup)
+                      Text(
+                        '${prev!.rir} RIR',
+                        style: TextStyle(color: c.iconMuted, fontSize: 11),
+                      ),
+                  ],
                 ),
               ),
             ),
           ),
-          if (!bodyweight)
+          if (!bodyweight) ...[
             Expanded(
               flex: 2,
-              child: _SetInput(
-                key: ValueKey('$_currentIndex-$index-weight'),
-                initial: row.weight,
-                onChanged: (v) => setState(() => row.weight = v),
+              child: _cell(
+                value: row.weight,
+                hint: weightHint,
+                selected: sel?.row == index && sel?.field == _Field.weight,
+                onTap: () => _select(index, _Field.weight),
               ),
             ),
+            const SizedBox(width: 8),
+          ],
           Expanded(
             flex: 2,
-            child: _SetInput(
-              key: ValueKey('$_currentIndex-$index-reps'),
-              initial: row.reps,
-              onChanged: (v) => setState(() => row.reps = v),
+            child: _cell(
+              value: row.reps,
+              hint: repsHint,
+              selected: sel?.row == index && sel?.field == _Field.reps,
+              onTap: () => _select(index, _Field.reps),
+              rir: row.warmup ? null : int.tryParse(row.rir),
             ),
           ),
-          if (!row.warmup)
-            Expanded(
-              flex: 2,
-              child: _SetInput(
-                key: ValueKey('$_currentIndex-$index-rir'),
-                initial: row.rir,
-                onChanged: (v) => setState(() => row.rir = v),
+          SizedBox(
+            width: 48,
+            child: Center(
+              child: GestureDetector(
+                key: ValueKey('set-check-$index'),
+                onTap: () => _onSetChecked(row, bodyweight, prev),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 150),
+                  width: 30,
+                  height: 30,
+                  decoration: BoxDecoration(
+                    color: row.done
+                        ? AppColors.successGreen
+                        : Colors.transparent,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: row.done
+                          ? AppColors.successGreen
+                          : c.textSecondary,
+                      width: 2,
+                    ),
+                  ),
+                  child: row.done
+                      ? const Icon(
+                          Icons.check,
+                          size: 20,
+                          color: AppColors.inkOnAccent,
+                        )
+                      : null,
+                ),
               ),
-            )
-          else
-            const Expanded(
-              flex: 2,
-              child: Center(
-                child: Text('—', style: TextStyle(color: Colors.grey)),
-              ),
-            ),
-          const SizedBox(width: 6),
-          Checkbox(
-            value: row.done,
-            onChanged: (value) => _onSetChecked(row, bodyweight),
-            activeColor: AppColors.accentTeal,
-            checkColor: c.textPrimary,
-            side: BorderSide(color: c.textSecondary, width: 1.5),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(4),
             ),
           ),
         ],
@@ -1038,87 +1431,339 @@ class _ActiveWorkoutScreenState extends ConsumerState<ActiveWorkoutScreen> {
     );
   }
 
+  Widget _cell({
+    required String value,
+    required String hint,
+    required bool selected,
+    required VoidCallback onTap,
+    int? rir,
+  }) {
+    final c = ThemeColors.of(context);
+    return GestureDetector(
+      onTap: onTap,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 120),
+            height: 44,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: c.input,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: selected ? c.textPrimary : Colors.transparent,
+                width: 2,
+              ),
+            ),
+            child: Text(
+              value.isEmpty ? hint : value,
+              style: TextStyle(
+                color: value.isEmpty ? c.iconMuted : c.textPrimary,
+                fontSize: 16,
+                fontWeight: value.isEmpty ? FontWeight.w400 : FontWeight.w600,
+              ).merge(AppTypography.numeric),
+            ),
+          ),
+          if (rir != null)
+            Positioned(
+              right: -6,
+              bottom: -6,
+              child: RirBadge(rir, size: 20),
+            ),
+        ],
+      ),
+    );
+  }
+
   Widget _headerText(String label) {
     final c = ThemeColors.of(context);
-    return Text(label, style: TextStyle(color: c.textSecondary, fontSize: 11));
-  }
-}
-
-class _SetInput extends StatefulWidget {
-  const _SetInput({super.key, required this.initial, required this.onChanged});
-
-  final String initial;
-  final ValueChanged<String> onChanged;
-
-  @override
-  State<_SetInput> createState() => _SetInputState();
-}
-
-class _SetInputState extends State<_SetInput> {
-  late final TextEditingController _controller;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = TextEditingController(text: widget.initial);
-  }
-
-  @override
-  void didUpdateWidget(covariant _SetInput oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (widget.initial != oldWidget.initial &&
-        _controller.text != widget.initial) {
-      _controller.text = widget.initial;
-    }
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final c = ThemeColors.of(context);
-    return TextField(
-      controller: _controller,
-      keyboardType: TextInputType.number,
-      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-      style: TextStyle(color: c.textPrimary, fontSize: 14),
-      decoration: const InputDecoration(
-        isDense: true,
-        contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+    return Text(
+      label,
+      textAlign: label == 'Serie' ? TextAlign.left : TextAlign.center,
+      style: TextStyle(
+        color: c.textSecondary,
+        fontSize: 13,
+        fontWeight: FontWeight.w600,
       ),
-      onChanged: (value) => widget.onChanged(value),
     );
   }
 }
 
 class _ToolChip extends StatelessWidget {
-  const _ToolChip({required this.label, required this.onTap});
+  const _ToolChip({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.color,
+  });
 
+  final IconData icon;
   final String label;
   final VoidCallback onTap;
+  final Color? color;
 
   @override
   Widget build(BuildContext context) {
     final c = ThemeColors.of(context);
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-        decoration: BoxDecoration(
-          color: c.input,
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            color: c.textPrimary,
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
+    final fg = color ?? c.textPrimary;
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: Material(
+        color: c.input,
+        borderRadius: BorderRadius.circular(99),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(99),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14),
+            child: Row(
+              children: [
+                Icon(icon, size: 16, color: fg),
+                const SizedBox(width: 6),
+                Text(
+                  label,
+                  style: TextStyle(
+                    color: fg,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Teclado numérico propio para registrar series sin abrir el teclado del
+/// sistema: dígitos, borrar, RIR por colores, avanzar y completar serie.
+class _NumericKeypad extends StatelessWidget {
+  const _NumericKeypad({
+    super.key,
+    required this.showRir,
+    required this.selectedRir,
+    required this.allowDecimal,
+    required this.nextLabel,
+    required this.onKey,
+    required this.onBackspace,
+    required this.onRir,
+    required this.onNext,
+    required this.onHide,
+    required this.onCheck,
+  });
+
+  final bool showRir;
+  final int? selectedRir;
+  final bool allowDecimal;
+  final String nextLabel;
+  final ValueChanged<String> onKey;
+  final VoidCallback onBackspace;
+  final ValueChanged<int> onRir;
+  final VoidCallback onNext;
+  final VoidCallback onHide;
+  final VoidCallback onCheck;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = ThemeColors.of(context);
+
+    Widget key(String label, {VoidCallback? onTap, Widget? child}) {
+      return Expanded(
+        child: Padding(
+          padding: const EdgeInsets.all(3),
+          child: Material(
+            color: Colors.transparent,
+            borderRadius: BorderRadius.circular(10),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(10),
+              onTap: onTap == null
+                  ? null
+                  : () {
+                      HapticFeedback.selectionClick();
+                      onTap();
+                    },
+              child: SizedBox(
+                height: 50,
+                child: Center(
+                  child: child ??
+                      Text(
+                        label,
+                        style: TextStyle(
+                          color: c.textPrimary,
+                          fontSize: 24,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    Widget side({
+      required Widget child,
+      required VoidCallback onTap,
+      Color? color,
+    }) {
+      return Padding(
+        padding: const EdgeInsets.all(3),
+        child: Material(
+          color: color ?? c.input,
+          borderRadius: BorderRadius.circular(12),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: onTap,
+            child: SizedBox(height: 50, child: Center(child: child)),
+          ),
+        ),
+      );
+    }
+
+    return Material(
+      color: c.card,
+      child: SafeArea(
+        top: false,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Divider(height: 1, color: AppColors.border),
+            if (showRir)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 10, 12, 4),
+                child: Row(
+                  children: [
+                    Text(
+                      'RIR',
+                      style: TextStyle(
+                        color: c.textSecondary,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    for (var r = 0; r <= 6; r++)
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: () => onRir(r),
+                          child: Center(
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 120),
+                              padding: const EdgeInsets.all(2),
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: selectedRir == r
+                                      ? c.textPrimary
+                                      : Colors.transparent,
+                                  width: 2,
+                                ),
+                              ),
+                              child: RirBadge(r, size: 30),
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8, 4, 8, 8),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    flex: 3,
+                    child: Column(
+                      children: [
+                        Row(children: [
+                          key('1', onTap: () => onKey('1')),
+                          key('2', onTap: () => onKey('2')),
+                          key('3', onTap: () => onKey('3')),
+                        ]),
+                        Row(children: [
+                          key('4', onTap: () => onKey('4')),
+                          key('5', onTap: () => onKey('5')),
+                          key('6', onTap: () => onKey('6')),
+                        ]),
+                        Row(children: [
+                          key('7', onTap: () => onKey('7')),
+                          key('8', onTap: () => onKey('8')),
+                          key('9', onTap: () => onKey('9')),
+                        ]),
+                        Row(children: [
+                          key(
+                            allowDecimal ? '.' : '',
+                            onTap: allowDecimal ? () => onKey('.') : null,
+                          ),
+                          key('0', onTap: () => onKey('0')),
+                          key(
+                            '',
+                            onTap: onBackspace,
+                            child: Icon(
+                              Icons.backspace_outlined,
+                              color: c.textPrimary,
+                            ),
+                          ),
+                        ]),
+                      ],
+                    ),
+                  ),
+                  Expanded(
+                    flex: 1,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        side(
+                          onTap: onHide,
+                          child: Icon(
+                            Icons.keyboard_hide_outlined,
+                            color: c.textPrimary,
+                          ),
+                        ),
+                        side(
+                          onTap: onNext,
+                          child: Text(
+                            nextLabel,
+                            style: TextStyle(
+                              color: c.textPrimary,
+                              fontSize: 15,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.all(3),
+                          child: Material(
+                            color: c.textPrimary,
+                            borderRadius: BorderRadius.circular(12),
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(12),
+                              onTap: onCheck,
+                              child: const SizedBox(
+                                height: 106,
+                                child: Center(
+                                  child: Icon(
+                                    Icons.check,
+                                    color: AppColors.inkOnAccent,
+                                    size: 30,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );

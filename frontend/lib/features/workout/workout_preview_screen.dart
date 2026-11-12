@@ -7,7 +7,9 @@ import '../../theme/app_theme.dart';
 import '../auth/auth_controller.dart';
 import '../create_program/add_exercises_sheet.dart';
 import 'active_workout_screen.dart';
+import 'exercise_info_sheet.dart';
 import 'workout_models.dart';
+import 'workout_ui.dart';
 
 class WorkoutPreviewScreen extends ConsumerStatefulWidget {
   const WorkoutPreviewScreen({
@@ -35,14 +37,20 @@ class _WorkoutPreviewScreenState extends ConsumerState<WorkoutPreviewScreen> {
     _exercises = List.of(widget.exercises);
   }
 
-  Map<String, int> _muscleCounts() {
-    final counts = <String, int>{};
+  /// Resumen por músculo principal: ejercicios y series.
+  List<({String muscle, int exercises, int sets})> _muscleSummary() {
+    final ex = <String, int>{};
+    final sets = <String, int>{};
     for (final exercise in _exercises) {
-      for (final muscle in exercise.muscles) {
-        counts[muscle] = (counts[muscle] ?? 0) + 1;
-      }
+      if (exercise.muscles.isEmpty) continue;
+      final main = muscleLabel(exercise.muscles.first);
+      ex[main] = (ex[main] ?? 0) + 1;
+      sets[main] = (sets[main] ?? 0) + exercise.sets;
     }
-    return counts;
+    final list = [
+      for (final m in ex.keys) (muscle: m, exercises: ex[m]!, sets: sets[m]!),
+    ]..sort((a, b) => b.sets.compareTo(a.sets));
+    return list;
   }
 
   Future<void> _addExtraExercise() async {
@@ -86,12 +94,15 @@ class _WorkoutPreviewScreenState extends ConsumerState<WorkoutPreviewScreen> {
                 label: 'Información',
                 onTap: () {
                   Navigator.of(sheetContext).pop();
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        '${exercise.name} · ${exercise.muscles.join(', ')}',
-                      ),
+                  showModalBottomSheet<void>(
+                    context: context,
+                    isScrollControlled: true,
+                    backgroundColor: c.card,
+                    shape: const RoundedRectangleBorder(
+                      borderRadius:
+                          BorderRadius.vertical(top: Radius.circular(24)),
                     ),
+                    builder: (_) => ExerciseInfoSheet(exercise: exercise),
                   );
                 },
               ),
@@ -176,6 +187,7 @@ class _WorkoutPreviewScreenState extends ConsumerState<WorkoutPreviewScreen> {
         builder: (_) => ActiveWorkoutScreen(
           exercises: _exercises,
           workoutName: widget.title,
+          planId: widget.workoutId,
         ),
       ),
     );
@@ -184,147 +196,198 @@ class _WorkoutPreviewScreenState extends ConsumerState<WorkoutPreviewScreen> {
   @override
   Widget build(BuildContext context) {
     final c = ThemeColors.of(context);
-    final counts = _muscleCounts();
+    final summary = _muscleSummary();
+    final totalSets = _exercises.fold<int>(0, (a, e) => a + e.sets);
     return Scaffold(
       appBar: AppBar(
+        centerTitle: true,
         title: Text(
           widget.title,
           style: TextStyle(color: c.textPrimary, fontWeight: FontWeight.bold),
         ),
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: _exercises.isEmpty
-            ? Container(
-                padding: const EdgeInsets.symmetric(
-                  vertical: 40,
-                  horizontal: 16,
-                ),
-                decoration: BoxDecoration(
-                  color: c.card,
-                  borderRadius: BorderRadius.circular(AppColors.radiusCard),
-                ),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+        children: [
+          if (summary.isNotEmpty) ...[
+            Text(
+              'Músculos objetivo',
+              style: TextStyle(
+                color: c.textPrimary,
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              height: 92,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: summary.length,
+                separatorBuilder: (_, _) => const SizedBox(width: 10),
+                itemBuilder: (context, index) =>
+                    _MuscleCard(item: summary[index]),
+              ),
+            ),
+            const SizedBox(height: 24),
+          ],
+          Row(
+            children: [
+              Expanded(
                 child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Icon(
-                      Icons.fitness_center,
-                      color: c.textSecondary,
-                      size: 28,
-                    ),
-                    SizedBox(height: 12),
                     Text(
-                      'Este entrenamiento no tiene ejercicios.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: c.textSecondary, fontSize: 14),
+                      '${_exercises.length} '
+                      '${_exercises.length == 1 ? 'Ejercicio' : 'Ejercicios'}',
+                      style: TextStyle(
+                        color: c.textPrimary,
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
+                    if (totalSets > 0)
+                      Text(
+                        '$totalSets series · tiempo estimado '
+                        '~${estimatedMinutes(totalSets)} min',
+                        style: TextStyle(color: c.textSecondary, fontSize: 13),
+                      ),
                   ],
                 ),
-              )
-            : Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              ),
+              Material(
+                color: c.input,
+                shape: const CircleBorder(),
+                child: InkWell(
+                  customBorder: const CircleBorder(),
+                  onTap: _addExtraExercise,
+                  child: SizedBox(
+                    width: 44,
+                    height: 44,
+                    child: Icon(Icons.add, color: c.textPrimary),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          if (_exercises.isEmpty)
+            Container(
+              margin: const EdgeInsets.only(top: 8),
+              padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 16),
+              decoration: BoxDecoration(
+                color: c.card,
+                borderRadius: BorderRadius.circular(AppColors.radiusCard),
+              ),
+              child: Column(
                 children: [
-                  SizedBox(
-                    height: 118,
-                    child: ListView.separated(
-                      scrollDirection: Axis.horizontal,
-                      itemCount: counts.length,
-                      separatorBuilder: (_, _) => const SizedBox(width: 10),
-                      itemBuilder: (context, index) {
-                        final muscle = counts.keys.elementAt(index);
-                        final count = counts[muscle]!;
-                        return Container(
-                          width: 100,
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: c.card,
-                            borderRadius: BorderRadius.circular(
-                              AppColors.radiusCard,
-                            ),
-                          ),
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              const Icon(
-                                Icons.accessibility_new,
-                                color: AppColors.accentOrange,
-                                size: 26,
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                muscle,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  color: c.textPrimary,
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                '$count ${count == 1 ? 'ejercicio' : 'ejercicios'}',
-                                style: TextStyle(
-                                  color: c.textSecondary,
-                                  fontSize: 11,
-                                ),
-                              ),
-                            ],
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        '${_exercises.length} ${_exercises.length == 1 ? 'Ejercicio' : 'Ejercicios'}',
-                        style: TextStyle(
-                          color: c.textPrimary,
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      GestureDetector(
-                        onTap: _addExtraExercise,
-                        child: Container(
-                          width: 36,
-                          height: 36,
-                          decoration: BoxDecoration(
-                            color: c.input,
-                            shape: BoxShape.circle,
-                          ),
-                          child: Icon(
-                            Icons.add,
-                            color: c.textPrimary,
-                            size: 20,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
+                  Icon(Icons.fitness_center, color: c.textSecondary, size: 28),
                   const SizedBox(height: 12),
-                  for (var i = 0; i < _exercises.length; i++) ...[
-                    _ExerciseTile(
-                      exercise: _exercises[i],
-                      onMenu: () => _showExerciseOptions(i),
-                    ),
-                    const SizedBox(height: 12),
-                  ],
+                  Text(
+                    'Este entrenamiento no tiene ejercicios.\n'
+                    'Toca + para agregar uno.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: c.textSecondary, fontSize: 14),
+                  ),
                 ],
               ),
+            )
+          else
+            for (var i = 0; i < _exercises.length; i++)
+              _ExerciseTile(
+                exercise: _exercises[i],
+                showDivider: i > 0,
+                onMenu: () => _showExerciseOptions(i),
+              ),
+        ],
       ),
       bottomNavigationBar: SafeArea(
         top: false,
         child: Container(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
           color: c.scaffold,
-          child: ElevatedButton(
-            onPressed: _startWorkout,
-            child: const Text('Iniciar entrenamiento'),
+          child: SizedBox(
+            height: 54,
+            child: ElevatedButton.icon(
+              onPressed: _exercises.isEmpty ? null : _startWorkout,
+              icon: const Icon(Icons.play_arrow_rounded),
+              label: const Text(
+                'Iniciar entrenamiento',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+              ),
+            ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _MuscleCard extends StatelessWidget {
+  const _MuscleCard({required this.item});
+
+  final ({String muscle, int exercises, int sets}) item;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = ThemeColors.of(context);
+    return Container(
+      width: 190,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: c.card,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 48,
+            height: 64,
+            decoration: BoxDecoration(
+              color: AppColors.secondaryCyan.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Icon(
+              Icons.accessibility_new,
+              color: AppColors.secondaryCyan,
+              size: 32,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  item.muscle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: c.textPrimary,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  '${item.exercises} '
+                  '${item.exercises == 1 ? 'ejercicio' : 'ejercicios'}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(color: c.textSecondary, fontSize: 12),
+                ),
+                Text(
+                  '${item.sets} ${item.sets == 1 ? 'serie' : 'series'}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(color: c.textSecondary, fontSize: 12),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -356,107 +419,110 @@ class _OptionTile extends StatelessWidget {
 }
 
 class _ExerciseTile extends StatelessWidget {
-  const _ExerciseTile({required this.exercise, required this.onMenu});
+  const _ExerciseTile({
+    required this.exercise,
+    required this.onMenu,
+    required this.showDivider,
+  });
 
   final PreviewExercise exercise;
   final VoidCallback onMenu;
+  final bool showDivider;
 
   @override
   Widget build(BuildContext context) {
     final c = ThemeColors.of(context);
-    return Material(
-      color: c.card,
-      borderRadius: BorderRadius.circular(AppColors.radiusCard),
-      clipBehavior: Clip.antiAlias,
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            ExerciseThumbnail(url: exercise.thumbnailUrl, size: 48),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    exercise.name,
-                    style: TextStyle(
-                      color: c.textPrimary,
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  for (
-                    var setNumber = 1;
-                    setNumber <= exercise.sets;
-                    setNumber++
-                  )
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 2),
-                      child: Row(
-                        children: [
-                          Text(
-                            '$setNumber | ${exercise.minReps}-${exercise.maxReps} reps',
-                            style: TextStyle(
-                              color: c.textSecondary,
-                              fontSize: 12,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          const Icon(
-                            Icons.local_fire_department,
-                            color: AppColors.danger,
-                            size: 14,
-                          ),
-                          const SizedBox(width: 2),
-                          Text(
-                            'RIR ${exercise.rir}',
-                            style: TextStyle(
-                              color: c.textSecondary,
-                              fontSize: 12,
-                            ),
-                          ),
-                        ],
+    final reps = exercise.minReps == exercise.maxReps
+        ? '${exercise.minReps} reps'
+        : '${exercise.minReps}–${exercise.maxReps} reps';
+    return Column(
+      children: [
+        if (showDivider) Divider(height: 1, indent: 76, color: c.input),
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 14),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              ExerciseThumbnail(url: exercise.thumbnailUrl, size: 64),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      exercise.name,
+                      style: TextStyle(
+                        color: c.textPrimary,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
-                  const SizedBox(height: 6),
-                  Wrap(
-                    spacing: 6,
-                    runSpacing: 6,
-                    children: exercise.muscles
-                        .map(
-                          (muscle) => Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 3,
-                            ),
-                            decoration: BoxDecoration(
-                              color: c.input,
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: Text(
-                              muscle,
-                              style: TextStyle(
-                                color: c.textSecondary,
-                                fontSize: 11,
+                    const SizedBox(height: 6),
+                    for (var n = 1; n <= exercise.sets; n++)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 4),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 22,
+                              height: 22,
+                              alignment: Alignment.center,
+                              decoration: BoxDecoration(
+                                color: c.input,
+                                shape: BoxShape.circle,
+                              ),
+                              child: Text(
+                                '$n',
+                                style: TextStyle(
+                                  color: c.textPrimary,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                ),
                               ),
                             ),
-                          ),
-                        )
-                        .toList(),
-                  ),
-                ],
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                reps,
+                                style: TextStyle(
+                                  color: c.textSecondary,
+                                  fontSize: 14,
+                                ),
+                              ),
+                            ),
+                            Text(
+                              'RIR ',
+                              style: TextStyle(
+                                color: c.iconMuted,
+                                fontSize: 10,
+                              ),
+                            ),
+                            RirBadge(exercise.rir),
+                          ],
+                        ),
+                      ),
+                    if (exercise.muscles.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
+                        children: [
+                          for (var m = 0; m < exercise.muscles.length; m++)
+                            MuscleChip(exercise.muscles[m], primary: m == 0),
+                        ],
+                      ),
+                    ],
+                  ],
+                ),
               ),
-            ),
-            IconButton(
-              onPressed: onMenu,
-              icon: Icon(Icons.more_vert, color: c.textSecondary),
-            ),
-          ],
+              IconButton(
+                onPressed: onMenu,
+                icon: Icon(Icons.more_vert, color: c.textSecondary),
+              ),
+            ],
+          ),
         ),
-      ),
+      ],
     );
   }
 }
