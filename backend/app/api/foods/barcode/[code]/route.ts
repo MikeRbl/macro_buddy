@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { connectDB } from "@/lib/db";
 import { normalizeBarcode } from "@/lib/foods";
 import { authUser } from "@/lib/requestAuth";
+import { upsertCandidates } from "@/lib/catalogStore";
+import { fetchOffProduct } from "@/lib/offRemote";
 import { findFoodByBarcode, serializeFood } from "@/models/Food";
 import MissingBarcode from "@/models/MissingBarcode";
 
@@ -9,8 +11,9 @@ import MissingBarcode from "@/models/MissingBarcode";
  * GET /api/foods/barcode/7501055300075
  *
  * La app primero busca en su copia local; llama aquí solo si no lo tiene
- * (productos aprobados después de su último sync). Un 404 se registra en
- * `missingbarcodes` para saber qué productos faltan.
+ * (productos aprobados después de su último sync). Si el catálogo no lo
+ * tiene, el servidor lo pide a OpenFoodFacts y lo guarda. Un 404 se
+ * registra en `missingbarcodes` para saber qué productos faltan.
  */
 export async function GET(
   req: NextRequest,
@@ -26,7 +29,14 @@ export async function GET(
   }
 
   await connectDB();
-  const doc = await findFoodByBarcode(barcode).lean().exec();
+  let doc = await findFoodByBarcode(barcode).lean().exec();
+  if (!doc) {
+    const off = await fetchOffProduct(barcode);
+    if (off) {
+      await upsertCandidates([off]);
+      doc = await findFoodByBarcode(barcode).lean().exec();
+    }
+  }
   if (!doc) {
     await MissingBarcode.updateOne(
       { barcode },
