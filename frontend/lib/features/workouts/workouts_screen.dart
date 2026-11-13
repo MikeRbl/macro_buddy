@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:table_calendar/table_calendar.dart';
 
+import '../onboarding/onboarding_content.dart';
+import '../onboarding/onboarding_widgets.dart';
 import '../../core/api/api_client.dart';
 import '../../core/models/workout_plan.dart';
 import '../../core/widgets/glass_card.dart';
@@ -231,17 +233,28 @@ class _WorkoutsScreenState extends ConsumerState<WorkoutsScreen> {
                 ),
                 child: Row(
                   children: [
+                    // Se encoge en pantallas angostas para dejar sitio a los
+                    // cuatro botones.
                     Expanded(
-                      child: Text(
-                        'WORKOUT',
-                        style: TextStyle(
-                          color: c.textPrimary,
-                          fontSize: 28,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: -0.5,
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          'WORKOUT',
+                          style: TextStyle(
+                            color: c.textPrimary,
+                            fontSize: 28,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: -0.5,
+                          ),
                         ),
                       ),
                     ),
+                    const SectionHelpButton(
+                      section: AppSection.workout,
+                      size: 44,
+                    ),
+                    const SizedBox(width: 8),
                     _RoundIconButton(
                       icon: Icons.calendar_today_outlined,
                       tooltip: 'Calendario',

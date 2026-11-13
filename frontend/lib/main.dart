@@ -6,6 +6,8 @@ import 'features/auth/auth_controller.dart';
 import 'features/auth/login_screen.dart';
 import 'features/navigation/main_scaffold.dart';
 import 'features/nutrition/food_catalog_bootstrap.dart';
+import 'features/onboarding/onboarding_controller.dart';
+import 'features/onboarding/onboarding_widgets.dart';
 import 'theme/app_theme.dart';
 
 Future<void> main() async {
@@ -46,8 +48,15 @@ class AuthGate extends ConsumerWidget {
       );
     }
 
-    return authState.isAuthenticated
-        ? const MainScaffold()
-        : const LoginScreen();
+    if (!authState.isAuthenticated) return const LoginScreen();
+
+    // Usuario nuevo (o que nunca la vio): bienvenida antes de la app.
+    final onboarding = ref.watch(onboardingProvider);
+    if (onboarding.showWelcome) {
+      return WelcomeOnboardingScreen(
+        onDone: () => ref.read(onboardingProvider.notifier).completeWelcome(),
+      );
+    }
+    return const MainScaffold();
   }
 }
