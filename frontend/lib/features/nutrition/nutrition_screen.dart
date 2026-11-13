@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../onboarding/onboarding_content.dart';
+import '../onboarding/onboarding_widgets.dart';
 import '../../core/models/nutrition.dart';
 import '../../core/widgets/glass_card.dart';
 import '../../core/widgets/mb_icon.dart';
@@ -245,6 +247,7 @@ class _Header extends StatelessWidget {
       children: [
         IconButton(
           onPressed: onPrev,
+          visualDensity: VisualDensity.compact,
           icon: Icon(Icons.chevron_left, color: c.textPrimary),
         ),
         Expanded(
@@ -260,12 +263,16 @@ class _Header extends StatelessWidget {
         ),
         IconButton(
           onPressed: onNext,
+          visualDensity: VisualDensity.compact,
           icon: Icon(Icons.chevron_right, color: c.textPrimary),
         ),
         IconButton(
           onPressed: onCalendar,
+          visualDensity: VisualDensity.compact,
           icon: MbIcon(MbAssets.calendar, size: 22, color: c.textPrimary),
         ),
+        const SizedBox(width: 4),
+        const SectionHelpButton(section: AppSection.nutrition, size: 36),
       ],
     );
   }

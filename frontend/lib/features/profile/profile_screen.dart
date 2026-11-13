@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../onboarding/onboarding_content.dart';
+import '../onboarding/onboarding_widgets.dart';
 import '../../core/widgets/build_footer.dart';
 import '../../core/widgets/glass_card.dart';
 import '../../core/widgets/mb_icon.dart';
@@ -106,6 +108,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                       filterQuality: FilterQuality.high,
                     ),
                   ),
+                  const Spacer(),
+                  const SectionHelpButton(section: AppSection.profile),
                 ],
               ),
               const SizedBox(height: 8),
@@ -282,6 +286,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                       onTap: user?.isProfessional ?? false
                           ? null
                           : () => showBecomeProfessionalDialog(context),
+                    ),
+                    Divider(height: 1, color: c.input),
+                    _settingsTile(
+                      Icons.school_outlined,
+                      'Tutoriales',
+                      () => replayAllTutorials(context, ref),
                     ),
                     Divider(height: 1, color: c.input),
                     _settingsTile(
