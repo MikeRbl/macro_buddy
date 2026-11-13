@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:table_calendar/table_calendar.dart';
 
+import '../onboarding/onboarding_content.dart';
+import '../onboarding/onboarding_widgets.dart';
 import '../../core/models/workout_session.dart';
 import '../../core/models/user.dart' show WeightEntry;
 import '../../core/widgets/glass_card.dart';
@@ -109,6 +111,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                       ],
                     ),
                   ),
+                  const SectionHelpButton(section: AppSection.dashboard),
+                  const SizedBox(width: 8),
                   _BellButton(hasAlert: true),
                 ],
               ),
