@@ -204,12 +204,13 @@ void main() {
     );
 
     expect(find.text('WORKOUT'), findsOneWidget);
-    expect(find.text('Biblioteca de entrenos'), findsOneWidget);
-    expect(find.text('ACTIVE PROGRAM'), findsOneWidget);
-    expect(find.text('MIN MAX PERSONAL'), findsOneWidget);
-    expect(find.textContaining('La biblioteca está vacía'), findsOneWidget);
+    expect(find.text('Programa activo'), findsOneWidget);
+    expect(find.text('Aún no tienes entrenamientos'), findsOneWidget);
+    expect(find.text('Entrenar sin rutina'), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('Más'), 200);
+    expect(find.text('Récords personales'), findsOneWidget);
     expect(find.text('Más'), findsOneWidget);
-    expect(find.text('Historial de entrenos'), findsOneWidget);
+    expect(find.text('Historial'), findsOneWidget);
   });
 
   testWidgets('Days cycle dialog asks for the cycle length', (tester) async {
@@ -277,7 +278,7 @@ void main() {
     );
 
     expect(
-      find.text('Este entrenamiento no tiene ejercicios.'),
+      find.textContaining('Este entrenamiento no tiene ejercicios.'),
       findsOneWidget,
     );
   });
@@ -295,12 +296,13 @@ void main() {
     expect(find.text('Serie'), findsOneWidget);
     expect(find.text('Anterior'), findsOneWidget);
     expect(find.text('Reps'), findsOneWidget);
-    expect(find.text('RIR'), findsOneWidget);
     expect(find.text('Lb'), findsOneWidget);
-    expect(find.text('Agregar serie de calentamiento (W)'), findsOneWidget);
-    await tester.drag(find.byType(ListView).last, const Offset(0, -300));
-    await tester.pump();
-    expect(find.text('Finalizar Entrenamiento'), findsOneWidget);
+    expect(find.text('Calentamiento'), findsOneWidget);
+    expect(find.text('Agregar serie'), findsOneWidget);
+    // El selector de RIR vive en el teclado propio, oculto hasta tocar una
+    // casilla.
+    expect(find.text('RIR'), findsNothing);
+    expect(find.text('Terminar entrenamiento'), findsOneWidget);
   });
 
   testWidgets('Exercise info sheet renders details without video controls', (
@@ -489,12 +491,12 @@ void main() {
     await tester.pump();
 
     // Tap + button in header
-    await tester.tap(find.byIcon(Icons.add_circle));
+    await tester.tap(find.byTooltip('Agregar'));
     await tester.pumpAndSettle();
 
     expect(find.text('Agregar'), findsOneWidget);
-    expect(find.text('Iniciar entrenamiento vacío'), findsOneWidget);
-    expect(find.text('Crear entrenamiento'), findsOneWidget);
+    expect(find.text('Iniciar entrenamiento libre'), findsOneWidget);
+    expect(find.text('Crear entrenamiento'), findsWidgets);
     expect(find.text('Nuevo programa'), findsNothing);
   });
 
@@ -525,7 +527,7 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('Agregar ejercicio'), findsOneWidget);
-    expect(find.text('Finalizar Entrenamiento'), findsOneWidget);
+    expect(find.text('Terminar entrenamiento'), findsOneWidget);
   });
 
   testWidgets('App is permanently dark with no appearance setting', (tester) async {
@@ -698,27 +700,38 @@ void main() {
       await tester.pump();
 
       // Add a warmup set
-      await tester.tap(find.text('Agregar serie de calentamiento (W)'));
+      await tester.tap(find.text('Calentamiento'));
       await tester.pump();
 
       expect(find.text('W'), findsOneWidget);
 
-      // Verify the RIR input is hidden for warmup row and shows placeholder '—'
-      expect(find.text('—'), findsWidgets);
+      // Open the keypad on the warmup row's weight cell.
+      final lbX = tester.getCenter(find.text('Lb')).dx;
+      final wY = tester.getCenter(find.text('W')).dy;
+      await tester.tapAt(Offset(lbX, wY));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.pump();
 
-      // Enter weight and reps on the warmup row
-      final textFields = find.byType(TextField);
-      await tester.enterText(textFields.at(0), '50');
-      await tester.enterText(textFields.at(1), '10');
+      // Warmup rows don't log RIR: the RIR picker is hidden.
+      expect(find.text('RIR'), findsNothing);
+
+      await tester.tap(find.text('5').last);
+      await tester.tap(find.text('0').last);
+      await tester.tap(find.text('Reps').last);
+      await tester.pump();
+      await tester.tap(find.text('1').last);
+      await tester.tap(find.text('0').last);
       await tester.pump();
 
       // Mark the warmup set as done
-      final checkboxes = find.byType(Checkbox);
-      await tester.tap(checkboxes.at(0));
+      await tester.tap(find.byKey(const ValueKey('set-check-0')));
       await tester.pump();
 
-      // Warmup set is still in the widget tree (dimmed, not removed from state)
+      // Warmup set is still in the widget tree, values kept.
       expect(find.text('W'), findsOneWidget);
+      expect(find.text('50'), findsOneWidget);
+      expect(find.text('Ingresa peso y repeticiones'), findsNothing);
     },
   );
 
@@ -734,9 +747,8 @@ void main() {
       );
       await tester.pump();
 
-      // Checkbox at index 0 has empty weight and reps
-      final checkboxes = find.byType(Checkbox);
-      await tester.tap(checkboxes.first);
+      // First set has empty weight and reps
+      await tester.tap(find.byKey(const ValueKey('set-check-0')));
       await tester.pump();
 
       expect(find.text('Ingresa peso y repeticiones'), findsOneWidget);
@@ -756,7 +768,15 @@ void main() {
       await tester.pump();
 
       expect(find.text('Bench Press'), findsOneWidget);
-      final deleteBtn = find.byIcon(Icons.delete_outline);
+      await tester.scrollUntilVisible(
+        find.text('Quitar'),
+        150,
+        scrollable: find.descendant(
+          of: find.byKey(const ValueKey('exercise-tools')),
+          matching: find.byType(Scrollable),
+        ),
+      );
+      final deleteBtn = find.text('Quitar');
       expect(deleteBtn, findsOneWidget);
 
       await tester.tap(deleteBtn);
@@ -795,9 +815,10 @@ void main() {
       await tester.pump();
 
       expect(find.byType(ReorderableListView), findsOneWidget);
-      // "Upper 1" aparece en la tarjeta Active Program y en la biblioteca.
+      // "Upper 1" aparece en el programa y en el botón "Empezar siguiente".
       expect(find.text('Upper 1'), findsNWidgets(2));
       expect(find.text('Lower 1'), findsOneWidget);
+      expect(find.text('SIGUIENTE'), findsOneWidget);
     },
   );
 
