@@ -118,3 +118,87 @@ class WorkoutPlan {
     );
   }
 }
+/// Programa (plan) de entrenamiento: agrupa entrenamientos y dura un
+/// número de ciclos (un ciclo = una semana). Solo uno está activo.
+class TrainingProgram {
+  const TrainingProgram({
+    required this.id,
+    required this.name,
+    this.color = 'cyan',
+    this.icon = 'rocket',
+    this.cycles = 8,
+    this.isActive = false,
+    this.currentCycle,
+    this.coachName,
+    this.byCoach = false,
+    this.workouts = const [],
+  });
+
+  final String id;
+  final String name;
+  final String color;
+  final String icon;
+
+  /// Duración del programa en ciclos.
+  final int cycles;
+  final bool isActive;
+
+  /// Ciclo en curso (1, 2, …) si el programa está activo.
+  final int? currentCycle;
+
+  /// true si lo creó o lo editó un profesional vinculado.
+  final bool byCoach;
+  final String? coachName;
+  final List<WorkoutPlan> workouts;
+
+  /// true cuando ya pasaron todos los ciclos del programa.
+  bool get isFinished => isActive && (currentCycle ?? 1) > cycles;
+
+  factory TrainingProgram.fromJson(Map<String, dynamic> json) {
+    final coach = json['coach'] as Map<String, dynamic>?;
+    return TrainingProgram(
+      id: json['id'] as String,
+      name: json['name'] as String? ?? 'Mi programa',
+      color: json['color'] as String? ?? 'cyan',
+      icon: json['icon'] as String? ?? 'rocket',
+      cycles: json['cycles'] as int? ?? 8,
+      isActive: json['isActive'] as bool? ?? false,
+      currentCycle: json['currentCycle'] as int?,
+      byCoach: coach != null,
+      coachName: coach?['name'] as String?,
+      workouts: (json['workouts'] as List<dynamic>? ?? [])
+          .map((e) => WorkoutPlan.fromJson(e as Map<String, dynamic>))
+          .toList(),
+    );
+  }
+}
+
+/// Aviso dentro de la app (p. ej. "tu entrenador cambió tu programa").
+class AppNotification {
+  const AppNotification({
+    required this.id,
+    required this.title,
+    this.body,
+    this.details = const [],
+    this.read = false,
+    this.at,
+  });
+
+  final String id;
+  final String title;
+  final String? body;
+  final List<String> details;
+  final bool read;
+  final DateTime? at;
+
+  factory AppNotification.fromJson(Map<String, dynamic> json) {
+    return AppNotification(
+      id: json['id'] as String,
+      title: json['title'] as String? ?? '',
+      body: json['body'] as String?,
+      details: (json['details'] as List<dynamic>? ?? []).cast<String>(),
+      read: json['read'] as bool? ?? false,
+      at: json['at'] == null ? null : DateTime.tryParse(json['at'] as String),
+    );
+  }
+}

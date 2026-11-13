@@ -139,7 +139,13 @@ export default function PatientsPage() {
                       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                         <Avatar name={p.name} size={38} />
                         <div className="stack" style={{ gap: 2, minWidth: 0 }}>
-                          <span style={{ fontWeight: 600 }}>{p.name}</span>
+                          {a == null ? (
+                            <span style={{ fontWeight: 600 }}>{p.name}</span>
+                          ) : (
+                            <Link href={`/pro/paciente/${p.id}`} style={{ fontWeight: 600, color: "var(--text)" }} title="Ver programas, notas y estadísticas">
+                              {p.name}
+                            </Link>
+                          )}
                           {p.username && <span className="muted" style={{ fontSize: 13 }}>@{p.username}</span>}
                         </div>
                       </div>

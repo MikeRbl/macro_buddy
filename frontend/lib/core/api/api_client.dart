@@ -276,12 +276,97 @@ class ApiClient {
     required String token,
     required String name,
     required List<Map<String, dynamic>> exercises,
+    String? programId,
   }) {
     return _post('/api/workouts', {
       'name': name,
       'exercises': exercises,
+      'program_id': ?programId,
     }, token: token);
   }
+
+  // ── Programas ─────────────────────────────────────────────────────────
+
+  /// Mis programas (el activo primero) con sus entrenamientos.
+  Future<List<dynamic>> fetchPrograms({required String token}) {
+    return _getList('/api/programs', token: token);
+  }
+
+  /// `body`: name, color, icon, cycles, activate y days (cada uno con
+  /// id opcional, name y exercises).
+  Future<Map<String, dynamic>> createProgram({
+    required String token,
+    required Map<String, dynamic> body,
+  }) => _post('/api/programs', body, token: token);
+
+  Future<Map<String, dynamic>> updateProgram({
+    required String token,
+    required String programId,
+    required Map<String, dynamic> body,
+  }) => _put('/api/programs/$programId', body, token: token);
+
+  Future<Map<String, dynamic>> activateProgram({
+    required String token,
+    required String programId,
+  }) => _post('/api/programs/$programId/activate', const {}, token: token);
+
+  Future<void> deleteProgram({
+    required String token,
+    required String programId,
+  }) async {
+    http.Response res;
+    try {
+      res = await _client
+          .delete(
+            _uri('/api/programs/$programId'),
+            headers: {'Authorization': 'Bearer $token'},
+          )
+          .timeout(const Duration(seconds: 15));
+    } catch (_) {
+      throw const ApiException(
+        'No se pudo conectar con el servidor. Verifica tu conexión.',
+      );
+    }
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      throw ApiException(
+        'No se pudo eliminar el programa (${res.statusCode}).',
+        statusCode: res.statusCode,
+      );
+    }
+  }
+
+  // ── Avisos ────────────────────────────────────────────────────────────
+
+  /// `{ unread, items }`: mis últimos avisos.
+  Future<Map<String, dynamic>> fetchNotifications({
+    required String token,
+  }) async {
+    http.Response res;
+    try {
+      res = await _client
+          .get(
+            _uri('/api/notifications'),
+            headers: {'Authorization': 'Bearer $token'},
+          )
+          .timeout(const Duration(seconds: 15));
+    } catch (_) {
+      throw const ApiException(
+        'No se pudo conectar con el servidor. Verifica tu conexión.',
+      );
+    }
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      throw ApiException('Error (${res.statusCode})');
+    }
+    try {
+      return jsonDecode(res.body) as Map<String, dynamic>;
+    } catch (_) {
+      throw const ApiException('Respuesta inválida del servidor.');
+    }
+  }
+
+  Future<Map<String, dynamic>> markNotificationsRead({
+    required String token,
+  }) => _post('/api/notifications', const {}, token: token);
 
   Future<List<dynamic>> fetchWorkouts({required String token}) {
     return _getList('/api/workouts', token: token);
@@ -291,9 +376,12 @@ class ApiClient {
     required String token,
     int? duration,
     String? note,
+    String? workoutId,
     required List<Map<String, dynamic>> sets,
   }) {
     return _post('/api/user_workouts', {
+      // Con el entrenamiento, el servidor guarda programa y ciclo en la sesión.
+      'workout_id': ?workoutId,
       'duration': duration,
       'note': note,
       'sets': sets,

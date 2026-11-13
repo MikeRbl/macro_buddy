@@ -176,7 +176,9 @@ const sectionGuides = <AppSection, SectionGuide>{
     name: 'Workout',
     asset: MbAssets.dumbbell,
     accent: AppColors.secondaryCyan,
-    summary: 'Tu programa de entrenamiento y el registro de tus series.',
+    summary:
+        'Tus programas de entrenamiento, el que tienes activo y el registro '
+        'de tus series.',
     steps: [
       OnboardingStep(
         icon: Icons.view_week_outlined,
@@ -191,8 +193,37 @@ const sectionGuides = <AppSection, SectionGuide>{
         accent: AppColors.successGreen,
         title: 'Programa activo',
         body:
-            'Aquí están tus entrenamientos. Toca uno para ver sus ejercicios. '
-            'La casilla se marca cuando lo haces esta semana.',
+            'Es el plan que sigues ahora. Toca un entrenamiento para ver sus '
+            'ejercicios; la casilla se marca cuando lo haces esta semana. '
+            'Arriba ves en qué ciclo vas, por ejemplo "Ciclo 2 de 8".',
+      ),
+      OnboardingStep(
+        icon: Icons.rocket_launch_outlined,
+        accent: AppColors.secondaryCyan,
+        title: 'Crea tus programas',
+        body:
+            'Con el + o en "Mis programas" armas un programa desde cero: '
+            'agregas sus días, los ejercicios de cada día y le pones nombre, '
+            'color e ícono. Puedes guardar varios y tocar Activar para '
+            'cambiar de plan.',
+      ),
+      OnboardingStep(
+        icon: Icons.tune,
+        accent: AppColors.warningAmber,
+        title: 'Duración en ciclos',
+        body:
+            'Un ciclo es una semana completa del programa. Con el lápiz '
+            'abres el programa y en Ajustes cambias cuántos ciclos dura, '
+            'además de series, repeticiones y ejercicios.',
+      ),
+      OnboardingStep(
+        icon: Icons.sports,
+        accent: AppColors.tertiaryPurple,
+        title: 'Si tienes entrenador',
+        body:
+            'Tu entrenador puede crearte o cambiarte un programa. Te llega '
+            'un aviso morado aquí en Workout con lo que cambió. Si tú lo '
+            'modificas, tu entrenador ve qué cambiaste.',
       ),
       OnboardingStep(
         icon: Icons.play_arrow_rounded,
@@ -216,8 +247,9 @@ const sectionGuides = <AppSection, SectionGuide>{
         accent: AppColors.tertiaryPurple,
         title: 'Más opciones',
         body:
-            'Abajo puedes hacer un entrenamiento libre, crear uno nuevo o ver '
-            'tu historial y tus récords personales.',
+            'Abajo puedes hacer un entrenamiento libre, agregar un '
+            'entrenamiento a tu programa activo o ver tu historial y tus '
+            'récords personales.',
       ),
     ],
   ),
@@ -241,8 +273,9 @@ const sectionGuides = <AppSection, SectionGuide>{
         accent: AppColors.tertiaryPurple,
         title: 'Mi entrenador',
         body:
-            'Vincula a tu coach o nutriólogo. En modo guiado, tu profesional '
-            'fija tus macros y tus rutinas.',
+            'Vincula a tu coach o nutriólogo. Tu profesional puede fijar tus '
+            'macros y crearte programas de entrenamiento; te avisamos cuando '
+            'los cambia.',
       ),
       OnboardingStep(
         icon: Icons.timer_outlined,

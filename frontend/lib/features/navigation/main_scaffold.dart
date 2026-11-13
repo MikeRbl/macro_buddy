@@ -9,6 +9,7 @@ import '../onboarding/onboarding_content.dart';
 import '../onboarding/onboarding_controller.dart';
 import '../onboarding/onboarding_widgets.dart';
 import '../profile/profile_screen.dart';
+import '../workouts/workouts_provider.dart';
 import '../workouts/workouts_screen.dart';
 import 'liquid_glass_nav_bar.dart';
 import 'quick_action_sheets.dart';
@@ -75,6 +76,22 @@ class _MainScaffoldState extends ConsumerState<MainScaffold> {
   Widget build(BuildContext context) {
     // Si las preferencias terminan de cargar con la app ya abierta.
     ref.listen(onboardingProvider, (_, _) => _maybeShowTour());
+    // Aviso del entrenador mientras el usuario está en otra pestaña.
+    ref.listen(notificationsProvider, (previous, next) {
+      final seen = {for (final n in previous ?? const []) n.id};
+      final fresh = [for (final n in next) if (!seen.contains(n.id)) n];
+      if (fresh.isEmpty || _index == 2) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          content: Text('${fresh.first.title}. Míralo en Workout.'),
+          action: SnackBarAction(
+            label: 'Ver',
+            onPressed: () => setState(() => _index = 2),
+          ),
+        ),
+      );
+    });
     return Scaffold(
       extendBody: true, // el cristal flota sobre el contenido que se desliza
       body: IndexedStack(index: _index, children: _screens),

@@ -205,7 +205,7 @@ void main() {
 
     expect(find.text('WORKOUT'), findsOneWidget);
     expect(find.text('Programa activo'), findsOneWidget);
-    expect(find.text('Aún no tienes entrenamientos'), findsOneWidget);
+    expect(find.text('Aún no tienes un programa'), findsOneWidget);
     expect(find.text('Entrenar sin rutina'), findsOneWidget);
     await tester.scrollUntilVisible(find.text('Más'), 200);
     expect(find.text('Récords personales'), findsOneWidget);
@@ -213,43 +213,25 @@ void main() {
     expect(find.text('Historial'), findsOneWidget);
   });
 
-  testWidgets('Days cycle dialog asks for the cycle length', (tester) async {
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: Builder(
-            builder: (context) => TextButton(
-              onPressed: () => showDaysCycleDialog(context),
-              child: const Text('open'),
-            ),
-          ),
-        ),
-      ),
-    );
-
-    await tester.tap(find.text('open'));
-    await tester.pumpAndSettle();
-
-    expect(
-      find.text('¿Cuántos días tiene tu ciclo de entrenamiento?'),
-      findsOneWidget,
-    );
-  });
-
-  testWidgets('Create program screen shows tabs, empty state and footer', (
+  testWidgets('Program editor shows tabs, empty state and footer', (
     tester,
   ) async {
     await tester.pumpWidget(
-      const ProviderScope(child: MaterialApp(home: CreateProgramScreen(days: 3))),
+      const ProviderScope(child: MaterialApp(home: ProgramEditorScreen())),
     );
+    await tester.pumpAndSettle();
+
+    // Programa nuevo: abre primero sus ajustes (nombre, duración, color).
+    expect(find.text('Ajustes del programa'), findsOneWidget);
+    await tester.tap(find.text('Listo'));
+    await tester.pumpAndSettle();
 
     expect(find.text('Crear programa'), findsOneWidget);
     expect(find.text('Entreno A'), findsWidgets);
-    expect(find.text('Entreno B'), findsWidgets);
-    expect(find.text('Entreno C'), findsWidgets);
-    expect(find.text('Guardar en biblioteca'), findsOneWidget);
+    expect(find.text('Duración: 8 ciclos'), findsOneWidget);
+    expect(find.text('Guardar sin activar'), findsOneWidget);
     expect(find.text('Activar programa'), findsOneWidget);
-    expect(find.textContaining('día de descanso'), findsOneWidget);
+    expect(find.textContaining('aún no tiene ejercicios'), findsOneWidget);
   });
 
   testWidgets('Workout preview renders exercises and footer', (tester) async {

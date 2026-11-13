@@ -106,40 +106,6 @@ class _CreateWorkoutScreenState extends ConsumerState<CreateWorkoutScreen> {
   @override
   Widget build(BuildContext context) {
     final c = ThemeColors.of(context);
-    if (ref.watch(isGuidedModeProvider)) {
-      // Modo guiado: las rutinas las fija el profesional; no hay nada
-      // que editar aquí.
-      return Scaffold(
-        appBar: AppBar(title: const Text('Crear entrenamiento')),
-        body: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(32),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.lock_outline, size: 44, color: c.textSecondary),
-                const SizedBox(height: 12),
-                Text(
-                  'Rutinas fijadas por tu profesional.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: c.textPrimary,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  'La creación de rutinas está deshabilitada en modo guiado.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: c.textSecondary, fontSize: 13),
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-    }
     return Scaffold(
       appBar: AppBar(
         title: const Text('Crear entrenamiento'),
