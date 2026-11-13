@@ -24,6 +24,12 @@ const workoutSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
+    /** Programa al que pertenece este día de entrenamiento. */
+    program_id: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Program",
+      index: true,
+    },
     order: { type: Number, default: 0 },
     exercises: { type: [workoutExerciseSchema], default: [] },
   },

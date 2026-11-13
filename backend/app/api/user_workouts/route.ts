@@ -4,6 +4,7 @@ import UserWorkout from "@/models/UserWorkout";
 // populate("sets.exercise_id") necesita el modelo registrado en este proceso.
 import "@/models/Exercise";
 import { verifyToken } from "@/lib/auth";
+import { sessionContext } from "@/lib/programs";
 
 interface SetInput {
   exercise_id: string;
@@ -47,6 +48,9 @@ export async function GET(req: NextRequest) {
       reactions: (w as unknown as { reactions?: { fire: number; bicep: number; dumbbell: number } })
         .reactions ?? { fire: 0, bicep: 0, dumbbell: 0 },
       workout_id: w.workout_id?.toString() ?? null,
+      workout_name: w.workout_name ?? null,
+      program_id: w.program_id?.toString() ?? null,
+      cycle: w.cycle ?? null,
       sets: w.sets.map((s) => {
         const exercise = s.exercise_id as unknown as {
           _id?: { toString(): string };
@@ -89,7 +93,8 @@ export async function POST(req: NextRequest) {
 
   const userWorkout = await UserWorkout.create({
     user_id: userId,
-    workout_id: body.workout_id || undefined,
+    // Programa, ciclo y nombre del entrenamiento: para comparar el progreso.
+    ...(await sessionContext(userId, body.workout_id)),
     date: body.date ? new Date(body.date) : new Date(),
     duration: body.duration,
     note: body.note?.trim() ? body.note.trim() : undefined,

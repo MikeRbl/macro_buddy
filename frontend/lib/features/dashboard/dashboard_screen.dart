@@ -14,6 +14,7 @@ import '../../theme/app_theme.dart';
 import '../auth/auth_controller.dart';
 import '../nutrition/nutrition_provider.dart';
 import '../nutrition/steps_provider.dart';
+import '../workouts/coach_notice.dart';
 import '../workouts/workouts_provider.dart';
 import 'dashboard_provider.dart';
 
@@ -113,7 +114,16 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
                   ),
                   const SectionHelpButton(section: AppSection.dashboard),
                   const SizedBox(width: 8),
-                  _BellButton(hasAlert: true),
+                  Semantics(
+                    button: true,
+                    label: 'Avisos',
+                    child: GestureDetector(
+                      onTap: () => showNoticesSheet(context),
+                      child: _BellButton(
+                        hasAlert: ref.watch(notificationsProvider).isNotEmpty,
+                      ),
+                    ),
+                  ),
                 ],
               ),
               const SizedBox(height: 20),

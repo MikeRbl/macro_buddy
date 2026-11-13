@@ -2,222 +2,119 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../core/api/api_client.dart';
+import '../../core/models/workout_plan.dart';
 import '../../core/widgets/exercise_thumbnail.dart';
 import '../../theme/app_theme.dart';
-import '../auth/auth_controller.dart';
 import '../workouts/workouts_provider.dart';
 import 'add_exercises_sheet.dart';
 import 'program_models.dart';
 
-Future<int?> showDaysCycleDialog(BuildContext context) {
-  final c = ThemeColors.of(context);
-  return showDialog<int>(
-    context: context,
-    builder: (dialogContext) => Dialog(
-      backgroundColor: c.card,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(AppColors.radiusCard),
-      ),
-      child: const _DaysCycleDialogContent(),
-    ),
-  );
-}
+/// Crear o editar un programa desde cero: sus días de entrenamiento, los
+/// ejercicios de cada día y sus ajustes (nombre, color, ícono y duración
+/// en ciclos).
+///
+/// Sin [program] crea uno nuevo; con [program] edita ese.
+class ProgramEditorScreen extends ConsumerStatefulWidget {
+  const ProgramEditorScreen({super.key, this.program});
 
-class _DaysCycleDialogContent extends StatefulWidget {
-  const _DaysCycleDialogContent();
+  final TrainingProgram? program;
 
   @override
-  State<_DaysCycleDialogContent> createState() =>
-      _DaysCycleDialogContentState();
+  ConsumerState<ProgramEditorScreen> createState() =>
+      _ProgramEditorScreenState();
 }
 
-class _DaysCycleDialogContentState extends State<_DaysCycleDialogContent> {
-  int _days = 7;
-
-  void _adjust(int delta) {
-    setState(() => _days = (_days + delta).clamp(1, 30));
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final c = ThemeColors.of(context);
-    return Padding(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            '¿Cuántos días tiene tu ciclo de entrenamiento?',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: c.textPrimary,
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 24),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              _CounterButton(icon: Icons.remove, onTap: () => _adjust(-1)),
-              const SizedBox(width: 24),
-              SizedBox(
-                width: 80,
-                child: Text(
-                  '$_days',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: c.textPrimary,
-                    fontSize: 40,
-                    fontWeight: FontWeight.bold,
-                    fontFeatures: const [FontFeature.tabularFigures()],
-                  ),
-                ),
-              ),
-              const SizedBox(width: 24),
-              _CounterButton(icon: Icons.add, onTap: () => _adjust(1)),
-            ],
-          ),
-          const SizedBox(height: 24),
-          ElevatedButton(
-            onPressed: () => Navigator.of(context).pop(_days),
-            child: const Text('Aceptar'),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _CounterButton extends StatelessWidget {
-  const _CounterButton({required this.icon, required this.onTap});
-
-  final IconData icon;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = ThemeColors.of(context);
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 44,
-        height: 44,
-        decoration: BoxDecoration(color: c.input, shape: BoxShape.circle),
-        child: Icon(icon, color: c.textPrimary),
-      ),
-    );
-  }
-}
-
-class CreateProgramScreen extends ConsumerStatefulWidget {
-  const CreateProgramScreen({super.key, required this.days});
-
-  final int days;
-
-  @override
-  ConsumerState<CreateProgramScreen> createState() =>
-      _CreateProgramScreenState();
-}
-
-class _CreateProgramScreenState extends ConsumerState<CreateProgramScreen>
+class _ProgramEditorScreenState extends ConsumerState<ProgramEditorScreen>
     with TickerProviderStateMixin {
+  static const _maxCycles = 52;
+
   late List<ProgramDay> _days;
   late TabController _tabController;
+  late String _name;
+  late final TextEditingController _nameController;
+  late String _color;
+  late String _icon;
+  late int _cycles;
   bool _saving = false;
   String? _error;
+
+  bool get _isNew => widget.program == null;
 
   @override
   void initState() {
     super.initState();
-    _days = List.generate(
-      widget.days,
-      (i) => ProgramDay(name: 'Entreno ${String.fromCharCode(65 + i)}'),
-    );
+    final p = widget.program;
+    _name = p?.name ?? '';
+    _color = p?.color ?? 'cyan';
+    _icon = p?.icon ?? 'rocket';
+    _cycles = p?.cycles ?? 8;
+    _nameController = TextEditingController(text: _name);
+    _days = [
+      for (final w in p?.workouts ?? const <WorkoutPlan>[])
+        ProgramDay(
+          id: w.id,
+          name: w.name,
+          exercises: [
+            for (final ex in w.exercises) ProgramExercise.fromPlan(ex),
+          ],
+        ),
+    ];
+    if (_days.isEmpty) _days.add(ProgramDay(name: _dayName(0)));
     _tabController = TabController(length: _days.length, vsync: this);
+    _tabController.addListener(_onTab);
+    if (_isNew) {
+      // Programa nuevo: primero se le pone nombre, color y duración.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _openSettings();
+      });
+    }
+  }
+
+  static String _dayName(int index) =>
+      'Entreno ${String.fromCharCode(65 + index % 26)}';
+
+  void _onTab() {
+    if (mounted) setState(() {});
   }
 
   @override
   void dispose() {
     _tabController.dispose();
+    _nameController.dispose();
     super.dispose();
   }
 
   ProgramDay get _currentDay => _days[_tabController.index];
 
-  void _rebuildTabs() {
-    final oldIndex = _tabController.index;
+  void _rebuildTabs({int? index}) {
     final old = _tabController;
     _tabController = TabController(
       length: _days.length,
       vsync: this,
-      initialIndex: oldIndex.clamp(0, _days.length - 1),
+      initialIndex: (index ?? old.index).clamp(0, _days.length - 1),
     );
+    _tabController.addListener(_onTab);
     setState(() {});
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) old.dispose();
-    });
+    WidgetsBinding.instance.addPostFrameCallback((_) => old.dispose());
   }
 
   Future<void> _renameDay() async {
     final name = await _promptText(
-      'Renombrar',
+      'Renombrar entrenamiento',
       _currentDay.name,
-      'Nombre del entrenamiento',
+      'Ej. Pecho y tríceps',
     );
     if (name == null || name.isEmpty) return;
     setState(() => _currentDay.name = name);
   }
 
-  Future<void> _setGymName() async {
-    final name = await _promptText(
-      'Nombre del gym',
-      _currentDay.gymName ?? '',
-      'Nombre del gym',
-    );
-    if (name == null) return;
-    setState(() => _currentDay.gymName = name.isEmpty ? null : name);
-  }
-
-  Future<void> _reorderDay() async {
-    final c = ThemeColors.of(context);
-    final action = await showModalBottomSheet<String>(
-      context: context,
-      backgroundColor: c.card,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (sheetContext) {
-        return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              for (final (value, label) in const [
-                ('left', 'Mover a la izquierda'),
-                ('right', 'Mover a la derecha'),
-              ])
-                ListTile(
-                  title: Text(
-                    label,
-                    style: TextStyle(color: c.textPrimary, fontSize: 16),
-                  ),
-                  onTap: () => Navigator.of(sheetContext).pop(value),
-                ),
-            ],
-          ),
-        );
-      },
-    );
-    if (action == null) return;
-    final index = _tabController.index;
-    final target = action == 'left' ? index - 1 : index + 1;
-    if (target < 0 || target >= _days.length) return;
-    setState(() {
-      final day = _days.removeAt(index);
-      _days.insert(target, day);
-    });
-    _rebuildTabs();
+  void _moveDay(int delta) {
+    final from = _tabController.index;
+    final to = from + delta;
+    if (to < 0 || to >= _days.length) return;
+    final day = _days.removeAt(from);
+    _days.insert(to, day);
+    _rebuildTabs(index: to);
   }
 
   Future<String?> _promptText(String title, String initial, String hint) {
@@ -225,40 +122,38 @@ class _CreateProgramScreenState extends ConsumerState<CreateProgramScreen>
     final controller = TextEditingController(text: initial);
     return showDialog<String>(
       context: context,
-      builder: (dialogContext) => Dialog(
-        backgroundColor: c.card,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(AppColors.radiusCard),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                title,
-                style: TextStyle(
-                  color: c.textPrimary,
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: controller,
-                autofocus: true,
-                decoration: InputDecoration(hintText: hint),
-              ),
-              const SizedBox(height: 20),
-              ElevatedButton(
-                onPressed: () =>
-                    Navigator.of(dialogContext).pop(controller.text.trim()),
-                child: const Text('Guardar'),
-              ),
-            ],
+      builder: (dialogContext) {
+        return AlertDialog(
+          backgroundColor: c.card,
+          title: Text(
+            title,
+            style: TextStyle(
+              color: c.textPrimary,
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+            ),
           ),
-        ),
-      ),
+          content: TextField(
+            controller: controller,
+            autofocus: true,
+            maxLength: 60,
+            textCapitalization: TextCapitalization.sentences,
+            style: TextStyle(color: c.textPrimary),
+            decoration: InputDecoration(hintText: hint, counterText: ''),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: Text('Cancelar', style: TextStyle(color: c.textSecondary)),
+            ),
+            TextButton(
+              onPressed: () =>
+                  Navigator.of(dialogContext).pop(controller.text.trim()),
+              child: const Text('Guardar'),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -267,11 +162,8 @@ class _CreateProgramScreenState extends ConsumerState<CreateProgramScreen>
     if (exercise == null) return;
     setState(() {
       _currentDay.exercises.add(ProgramExercise(exercise: exercise));
+      _error = null;
     });
-  }
-
-  void _removeExercise(ProgramExercise entry) {
-    setState(() => _currentDay.exercises.remove(entry));
   }
 
   void _showExerciseMenu(ProgramExercise entry) {
@@ -287,12 +179,12 @@ class _CreateProgramScreenState extends ConsumerState<CreateProgramScreen>
           child: ListTile(
             leading: const Icon(Icons.delete_outline, color: AppColors.danger),
             title: const Text(
-              'Eliminar del día',
+              'Quitar del entrenamiento',
               style: TextStyle(color: AppColors.danger, fontSize: 16),
             ),
             onTap: () {
               Navigator.of(sheetContext).pop();
-              _removeExercise(entry);
+              setState(() => _currentDay.exercises.remove(entry));
             },
           ),
         );
@@ -303,60 +195,238 @@ class _CreateProgramScreenState extends ConsumerState<CreateProgramScreen>
   void _removeDay() {
     if (_days.length <= 1) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Se requiere al menos un día')),
+        const SnackBar(
+          content: Text('El programa necesita al menos un entrenamiento'),
+        ),
       );
       return;
     }
-    setState(() => _days.removeAt(_tabController.index));
+    _days.removeAt(_tabController.index);
     _rebuildTabs();
   }
 
   void _addDay() {
-    setState(() {
-      _days.add(
-        ProgramDay(name: 'Entreno ${String.fromCharCode(65 + _days.length)}'),
-      );
-    });
-    _rebuildTabs();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        _tabController.animateTo(_days.length - 1);
-      }
-    });
+    _days.add(ProgramDay(name: _dayName(_days.length)));
+    _rebuildTabs(index: _days.length - 1);
   }
 
   void _reorderDayTab(int oldIndex, int newIndex) {
     final selected = _days[_tabController.index];
-    setState(() {
-      final day = _days.removeAt(oldIndex);
-      _days.insert(newIndex, day);
-    });
-    _rebuildTabs();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        _tabController.index = _days.indexOf(selected);
-      }
-    });
+    final day = _days.removeAt(oldIndex);
+    _days.insert(newIndex, day);
+    _rebuildTabs(index: _days.indexOf(selected));
   }
 
-  Future<void> _saveProgram() async {
-    final token = ref.read(authControllerProvider).token;
-    if (token == null) {
-      setState(() => _error = 'Sesión expirada. Inicia sesión de nuevo.');
+  /// Ajustes del programa: duración (ciclos), nombre, color e ícono.
+  Future<void> _openSettings() async {
+    final c = ThemeColors.of(context);
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: c.card,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (sheetContext) {
+        return StatefulBuilder(
+          builder: (sheetContext, setSheet) {
+            void update(VoidCallback change) {
+              setState(change);
+              setSheet(() {});
+            }
+
+            return Padding(
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.of(sheetContext).viewInsets.bottom,
+              ),
+              child: SafeArea(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              'Ajustes del programa',
+                              style: TextStyle(
+                                color: c.textPrimary,
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                          IconButton(
+                            tooltip: 'Cerrar',
+                            onPressed: () => Navigator.of(sheetContext).pop(),
+                            icon: Icon(Icons.close, color: c.textPrimary),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      _SettingLabel('Nombre'),
+                      TextField(
+                        key: const Key('program-name'),
+                        controller: _nameController,
+                        maxLength: 60,
+                        textCapitalization: TextCapitalization.sentences,
+                        style: TextStyle(color: c.textPrimary),
+                        decoration: const InputDecoration(
+                          hintText: 'Ej. Torso / Pierna',
+                          counterText: '',
+                        ),
+                        onChanged: (v) => update(() {
+                          _name = v.trim();
+                          _error = null;
+                        }),
+                      ),
+                      const SizedBox(height: 20),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Duración',
+                                  style: TextStyle(
+                                    color: c.textPrimary,
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  '$_cycles ${_cycles == 1 ? 'ciclo' : 'ciclos'}'
+                                  ' · un ciclo es una semana',
+                                  style: TextStyle(
+                                    color: c.textSecondary,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          _CounterButton(
+                            icon: Icons.remove,
+                            tooltip: 'Menos ciclos',
+                            onTap: _cycles > 1
+                                ? () => update(() => _cycles--)
+                                : null,
+                          ),
+                          SizedBox(
+                            width: 48,
+                            child: Text(
+                              '$_cycles',
+                              key: const Key('program-cycles'),
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: c.textPrimary,
+                                fontSize: 22,
+                                fontWeight: FontWeight.bold,
+                                fontFeatures: const [
+                                  FontFeature.tabularFigures(),
+                                ],
+                              ),
+                            ),
+                          ),
+                          _CounterButton(
+                            icon: Icons.add,
+                            tooltip: 'Más ciclos',
+                            onTap: _cycles < _maxCycles
+                                ? () => update(() => _cycles++)
+                                : null,
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 20),
+                      _SettingLabel('Color'),
+                      Wrap(
+                        spacing: 10,
+                        runSpacing: 10,
+                        children: [
+                          for (final entry in programColors.entries)
+                            Semantics(
+                              button: true,
+                              selected: _color == entry.key,
+                              label: programColorNames[entry.key],
+                              child: GestureDetector(
+                                onTap: () => update(() => _color = entry.key),
+                                child: Container(
+                                  width: 40,
+                                  height: 40,
+                                  decoration: BoxDecoration(
+                                    color: entry.value,
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                      color: _color == entry.key
+                                          ? c.textPrimary
+                                          : Colors.transparent,
+                                      width: 3,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 20),
+                      _SettingLabel('Ícono'),
+                      Wrap(
+                        spacing: 10,
+                        runSpacing: 10,
+                        children: [
+                          for (final entry in programIcons.entries)
+                            GestureDetector(
+                              onTap: () => update(() => _icon = entry.key),
+                              child: Container(
+                                width: 44,
+                                height: 44,
+                                decoration: BoxDecoration(
+                                  color: _icon == entry.key
+                                      ? programColor(_color)
+                                      : c.input,
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Icon(
+                                  entry.value,
+                                  size: 22,
+                                  color: _icon == entry.key
+                                      ? AppColors.inkOnAccent
+                                      : c.textPrimary,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 24),
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton(
+                          onPressed: () => Navigator.of(sheetContext).pop(),
+                          child: const Text('Listo'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _save({required bool activate}) async {
+    if (_name.isEmpty) {
+      setState(() => _error = 'Ponle un nombre al programa.');
+      _openSettings();
       return;
     }
-    final exercises = <Map<String, dynamic>>[
-      for (final day in _days)
-        for (final entry in day.exercises)
-          {
-            'exercise_id': entry.exercise.id,
-            'sets': entry.sets,
-            'min_reps': entry.minReps,
-            'max_reps': entry.maxReps,
-            'rir': entry.rir,
-          },
-    ];
-    if (exercises.isEmpty) {
+    if (_days.every((d) => d.exercises.isEmpty)) {
       setState(() => _error = 'Agrega al menos un ejercicio al programa.');
       return;
     }
@@ -365,46 +435,121 @@ class _CreateProgramScreenState extends ConsumerState<CreateProgramScreen>
       _saving = true;
       _error = null;
     });
-    try {
-      await ref
-          .read(apiClientProvider)
-          .createWorkout(
-            token: token,
-            name: 'Mi programa',
-            exercises: exercises,
-          );
-      ref.invalidate(workoutProvider);
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Programa guardado')));
-      Navigator.of(context).popUntil((route) => route.isFirst);
-    } on ApiException catch (e) {
-      if (mounted) setState(() => _error = e.message);
-    } catch (_) {
-      if (mounted) {
-        setState(
-          () => _error = 'Ocurrió un error inesperado. Intenta de nuevo.',
+    final error = await ref
+        .read(workoutProvider.notifier)
+        .saveProgram(
+          programId: widget.program?.id,
+          body: {
+            'name': _name,
+            'color': _color,
+            'icon': _icon,
+            'cycles': _cycles,
+            'activate': activate,
+            'days': [for (final day in _days) day.toJson()],
+          },
         );
-      }
-    } finally {
-      if (mounted) setState(() => _saving = false);
+    if (!mounted) return;
+    if (error != null) {
+      setState(() {
+        _saving = false;
+        _error = error;
+      });
+      return;
     }
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        behavior: SnackBarBehavior.floating,
+        content: Text(activate ? 'Programa activado' : 'Programa guardado'),
+      ),
+    );
+    Navigator.of(context).pop();
   }
 
   @override
   Widget build(BuildContext context) {
     final c = ThemeColors.of(context);
+    final coach = widget.program?.byCoach ?? false;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Crear programa'),
+        title: Text(_isNew ? 'Crear programa' : 'Editar programa'),
         leading: IconButton(
           onPressed: () => Navigator.of(context).maybePop(),
           icon: Icon(Icons.arrow_back, color: c.textPrimary),
         ),
+        actions: [
+          IconButton(
+            tooltip: 'Ajustes del programa',
+            onPressed: _openSettings,
+            icon: Icon(Icons.tune, color: c.textPrimary),
+          ),
+        ],
       ),
       body: Column(
         children: [
+          // Resumen del programa: tocarlo abre los ajustes.
+          InkWell(
+            onTap: _openSettings,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+              child: Row(
+                children: [
+                  ProgramBadge(color: _color, icon: _icon, size: 44),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          _name.isEmpty ? 'Programa sin nombre' : _name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: _name.isEmpty
+                                ? c.textSecondary
+                                : c.textPrimary,
+                            fontSize: 17,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        Text(
+                          'Duración: $_cycles '
+                          '${_cycles == 1 ? 'ciclo' : 'ciclos'}',
+                          style: TextStyle(
+                            color: c.textSecondary,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Text(
+                    'Ajustes',
+                    style: TextStyle(
+                      color: programColor(_color),
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (coach)
+            Container(
+              width: double.infinity,
+              margin: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.tertiaryPurple.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                'Este programa es de '
+                '${widget.program?.coachName ?? 'tu entrenador'}. '
+                'Puedes cambiarlo; tu entrenador verá qué cambiaste.',
+                style: TextStyle(color: c.textPrimary, fontSize: 13),
+              ),
+            ),
           _DaysTabBar(
             days: _days,
             selectedIndex: _tabController.index,
@@ -418,15 +563,9 @@ class _CreateProgramScreenState extends ConsumerState<CreateProgramScreen>
             child: Row(
               children: [
                 _ActionChip(
-                  icon: Icons.remove,
-                  label: 'Eliminar',
-                  onTap: _removeDay,
-                ),
-                const SizedBox(width: 8),
-                _ActionChip(
-                  icon: Icons.home_outlined,
-                  label: 'Nombre del gym',
-                  onTap: _setGymName,
+                  icon: Icons.add,
+                  label: 'Agregar día',
+                  onTap: _addDay,
                 ),
                 const SizedBox(width: 8),
                 _ActionChip(
@@ -436,15 +575,21 @@ class _CreateProgramScreenState extends ConsumerState<CreateProgramScreen>
                 ),
                 const SizedBox(width: 8),
                 _ActionChip(
-                  icon: Icons.compare_arrows,
-                  label: 'Reordenar',
-                  onTap: _reorderDay,
+                  icon: Icons.arrow_back,
+                  label: 'Mover',
+                  onTap: () => _moveDay(-1),
                 ),
                 const SizedBox(width: 8),
                 _ActionChip(
-                  icon: Icons.add,
-                  label: '+ Agregar Día',
-                  onTap: _addDay,
+                  icon: Icons.arrow_forward,
+                  label: 'Mover',
+                  onTap: () => _moveDay(1),
+                ),
+                const SizedBox(width: 8),
+                _ActionChip(
+                  icon: Icons.remove_circle_outline,
+                  label: 'Quitar día',
+                  onTap: _removeDay,
                 ),
               ],
             ),
@@ -468,31 +613,37 @@ class _CreateProgramScreenState extends ConsumerState<CreateProgramScreen>
       children: [
         Expanded(
           child: day.exercises.isEmpty
-              ? Container(
-                  margin: const EdgeInsets.all(16),
-                  padding: const EdgeInsets.symmetric(
-                    vertical: 36,
-                    horizontal: 16,
-                  ),
-                  decoration: BoxDecoration(
-                    color: c.card,
-                    borderRadius: BorderRadius.circular(AppColors.radiusCard),
-                    border: Border.all(color: c.input),
-                  ),
-                  child: Column(
-                    children: [
-                      Icon(
-                        Icons.hotel_outlined,
-                        color: c.textSecondary,
-                        size: 28,
-                      ),
-                      SizedBox(height: 12),
-                      Text(
-                        'Puedes convertir el día de descanso en un día de entrenamiento agregando ejercicios abajo',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(color: c.textSecondary, fontSize: 14),
-                      ),
-                    ],
+              ? SingleChildScrollView(
+                  child: Container(
+                    margin: const EdgeInsets.all(16),
+                    padding: const EdgeInsets.symmetric(
+                      vertical: 36,
+                      horizontal: 16,
+                    ),
+                    decoration: BoxDecoration(
+                      color: c.card,
+                      borderRadius: BorderRadius.circular(AppColors.radiusCard),
+                      border: Border.all(color: c.input),
+                    ),
+                    child: Column(
+                      children: [
+                        Icon(
+                          Icons.fitness_center,
+                          color: c.textSecondary,
+                          size: 28,
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          'Este entrenamiento aún no tiene ejercicios. '
+                          'Agrégalos con el botón de abajo.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: c.textSecondary,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 )
               : ReorderableListView(
@@ -527,7 +678,7 @@ class _CreateProgramScreenState extends ConsumerState<CreateProgramScreen>
                 foregroundColor: c.textPrimary,
               ),
               icon: const Icon(Icons.add),
-              label: const Text('Add Exercises'),
+              label: const Text('Agregar ejercicio'),
             ),
           ),
         ),
@@ -537,6 +688,12 @@ class _CreateProgramScreenState extends ConsumerState<CreateProgramScreen>
 
   Widget _buildFooter() {
     final c = ThemeColors.of(context);
+    final active = widget.program?.isActive ?? false;
+    const spinner = SizedBox(
+      width: 22,
+      height: 22,
+      child: CircularProgressIndicator(strokeWidth: 2.5),
+    );
     return SafeArea(
       top: false,
       child: Container(
@@ -553,28 +710,79 @@ class _CreateProgramScreenState extends ConsumerState<CreateProgramScreen>
               ),
               const SizedBox(height: 8),
             ],
-            ElevatedButton(
-              onPressed: _saving ? null : _saveProgram,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: c.input,
-                foregroundColor: c.textPrimary,
+            if (active)
+              ElevatedButton(
+                onPressed: _saving ? null : () => _save(activate: false),
+                child: _saving ? spinner : const Text('Guardar cambios'),
+              )
+            else ...[
+              ElevatedButton(
+                onPressed: _saving ? null : () => _save(activate: false),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: c.input,
+                  foregroundColor: c.textPrimary,
+                ),
+                child: _saving
+                    ? spinner
+                    : Text(_isNew ? 'Guardar sin activar' : 'Guardar cambios'),
               ),
-              child: _saving
-                  ? const SizedBox(
-                      width: 22,
-                      height: 22,
-                      child: CircularProgressIndicator(strokeWidth: 2.5),
-                    )
-                  : const Text('Guardar en biblioteca'),
-            ),
-            const SizedBox(height: 8),
-            ElevatedButton(
-              onPressed: _saving ? null : _saveProgram,
-              child: const Text('Activar programa'),
-            ),
+              const SizedBox(height: 8),
+              ElevatedButton(
+                onPressed: _saving ? null : () => _save(activate: true),
+                child: const Text('Activar programa'),
+              ),
+            ],
           ],
         ),
       ),
+    );
+  }
+}
+
+class _SettingLabel extends StatelessWidget {
+  const _SettingLabel(this.label);
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = ThemeColors.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: c.textPrimary,
+          fontSize: 16,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
+}
+
+class _CounterButton extends StatelessWidget {
+  const _CounterButton({
+    required this.icon,
+    required this.tooltip,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = ThemeColors.of(context);
+    return IconButton(
+      tooltip: tooltip,
+      onPressed: onTap,
+      style: IconButton.styleFrom(
+        backgroundColor: c.input,
+        minimumSize: const Size(44, 44),
+      ),
+      icon: Icon(icon, color: onTap == null ? c.textSecondary : c.textPrimary),
     );
   }
 }

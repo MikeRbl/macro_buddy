@@ -267,6 +267,7 @@ class _ActiveWorkoutScreenState extends ConsumerState<ActiveWorkoutScreen> {
             token: token,
             duration: _stopwatch.elapsed.inSeconds,
             note: _sessionNote.isEmpty ? null : _sessionNote,
+            workoutId: widget.planId,
             sets: sets,
           );
       workoutId = res['id'] as String?;
