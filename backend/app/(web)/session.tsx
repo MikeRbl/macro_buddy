@@ -261,7 +261,7 @@ export function WebShell({ children }: { children: ReactNode }) {
             <Link
               key={item.href}
               href={item.href}
-              aria-current={pathname === item.href ? "page" : undefined}
+              aria-current={pathname === item.href || (item.href === "/pro" && pathname.startsWith("/pro/paciente")) ? "page" : undefined}
               className={item.href.startsWith("/pro") ? "is-pro" : undefined}
             >
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">

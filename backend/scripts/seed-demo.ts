@@ -19,6 +19,9 @@ import DailyNutritionLog from "../models/DailyNutritionLog";
 import Exercise from "../models/Exercise";
 import LinkCode from "../models/LinkCode";
 import User from "../models/User";
+import Notification from "../models/Notification";
+import Program from "../models/Program";
+import ProgramChange from "../models/ProgramChange";
 import UserWorkout from "../models/UserWorkout";
 import Workout from "../models/Workout";
 
@@ -77,6 +80,9 @@ async function clean() {
     DailyNutritionLog.deleteMany({ user_id: { $in: ids } }),
     UserWorkout.deleteMany({ user_id: { $in: ids } }),
     Workout.deleteMany({ user_id: { $in: ids } }),
+    Program.deleteMany({ user_id: { $in: ids } }),
+    ProgramChange.deleteMany({ patient_id: { $in: ids } }),
+    Notification.deleteMany({ user_id: { $in: ids } }),
     CoachLink.deleteMany({ $or: [{ patient_id: { $in: ids } }, { professional_id: { $in: ids } }] }),
     LinkCode.deleteMany({ professional_id: { $in: ids } }),
     User.deleteMany({ _id: { $in: ids } }),
@@ -128,9 +134,20 @@ async function seedPatient(p: Patient, password_hash: string, exercises: mongoos
   );
 
   if (exercises.length) {
+    // Programa activo desde hace dos semanas (va en su ciclo 3 de 8).
+    const started_at = new Date();
+    started_at.setDate(started_at.getDate() - 14);
+    const program = await Program.create({
+      user_id: user._id,
+      name: "Programa demo",
+      cycles: 8,
+      is_active: true,
+      started_at,
+    });
     const routine = await Workout.create({
       name: "Rutina demo",
       user_id: user._id,
+      program_id: program._id,
       exercises: exercises.map((exercise_id) => ({ exercise_id, sets: 3, min_reps: 8, max_reps: 12, rir: 2 })),
     });
     await UserWorkout.insertMany(
@@ -141,6 +158,9 @@ async function seedPatient(p: Patient, password_hash: string, exercises: mongoos
         return {
           user_id: user._id,
           workout_id: routine._id,
+          workout_name: routine.name,
+          program_id: program._id,
+          cycle: 3 - Math.min(2, Math.floor(daysAgo / 7)),
           date,
           duration: 55 * 60,
           // Cada sesión más reciente sube un poco la carga.

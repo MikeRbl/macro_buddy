@@ -9,11 +9,14 @@ import '../../core/models/workout_plan.dart';
 import '../../core/widgets/glass_card.dart';
 import '../../theme/app_theme.dart';
 import '../auth/auth_controller.dart';
+import '../create_program/create_program_screen.dart';
+import '../create_program/program_models.dart';
 import '../dashboard/dashboard_provider.dart';
 import '../workout/active_workout_screen.dart';
 import '../workout/workout_models.dart';
 import '../workout/workout_preview_screen.dart';
 import '../workout/workout_ui.dart';
+import 'coach_notice.dart';
 import 'create_workout_screen.dart';
 import 'workout_history_screen.dart';
 import 'workouts_provider.dart';
@@ -24,6 +27,9 @@ import 'workouts_provider.dart';
 ///   1. Semana arriba (días entrenados marcados).
 ///   2. "Programa activo": tarjeta desplegable con cada entrenamiento,
 ///      sus ejercicios, músculos y una casilla de "hecho esta semana".
+///      Arriba dice en qué ciclo va ("Ciclo 2 de 8").
+///   2b. "Mis programas": los demás programas guardados, para activar,
+///      editar o crear uno nuevo desde cero.
 ///   3. Botón grande "Empezar" con el siguiente entrenamiento pendiente.
 ///   4. Tocar un entrenamiento abre su detalle (músculos, ejercicios y
 ///      botón Iniciar), y de ahí al registro de series.
@@ -98,6 +104,10 @@ class _WorkoutsScreenState extends ConsumerState<WorkoutsScreen> {
             Navigator.of(sheetContext).pop();
             _openCreateWorkout();
           },
+          onCreateProgram: () {
+            Navigator.of(sheetContext).pop();
+            _openProgramEditor();
+          },
         );
       },
     );
@@ -151,56 +161,131 @@ class _WorkoutsScreenState extends ConsumerState<WorkoutsScreen> {
     _loadTrainedDays();
   }
 
-  Future<void> _renameProgram(String current) async {
+  /// Abre el editor: sin programa crea uno nuevo desde cero.
+  Future<void> _openProgramEditor([TrainingProgram? program]) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => ProgramEditorScreen(program: program),
+      ),
+    );
+  }
+
+  void _toast(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(behavior: SnackBarBehavior.floating, content: Text(message)),
+    );
+  }
+
+  Future<void> _activate(TrainingProgram program) async {
+    final error = await ref
+        .read(workoutProvider.notifier)
+        .activateProgram(program.id);
+    _toast(error ?? '«${program.name}» es ahora tu programa activo');
+  }
+
+  Future<void> _deleteProgram(TrainingProgram program) async {
     final c = ThemeColors.of(context);
-    final controller = TextEditingController(text: current);
-    final name = await showDialog<String>(
+    final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: c.card,
         title: Text(
-          'Nombre del programa',
+          '¿Eliminar «${program.name}»?',
           style: TextStyle(color: c.textPrimary, fontWeight: FontWeight.bold),
         ),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          textCapitalization: TextCapitalization.sentences,
+        content: Text(
+          'Se borran el programa y sus entrenamientos. Tu historial de '
+          'sesiones se conserva.',
+          style: TextStyle(color: c.textSecondary),
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
+            onPressed: () => Navigator.of(ctx).pop(false),
             child: Text('Cancelar', style: TextStyle(color: c.textSecondary)),
           ),
           TextButton(
-            onPressed: () => Navigator.of(ctx).pop(controller.text),
-            child: const Text('Guardar'),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text(
+              'Eliminar',
+              style: TextStyle(color: AppColors.danger),
+            ),
           ),
         ],
       ),
     );
-    controller.dispose();
-    if (name != null) {
-      await ref.read(workoutProvider.notifier).renameProgram(name);
-    }
+    if (ok != true) return;
+    final error = await ref
+        .read(workoutProvider.notifier)
+        .deleteProgram(program.id);
+    _toast(error ?? 'Programa eliminado');
   }
 
-  int _weekNumber() {
-    final sessions = ref.watch(dashboardProvider).value ?? const [];
-    DateTime? first;
-    for (final s in sessions) {
-      final d = DateTime(s.date.year, s.date.month, s.date.day);
-      if (first == null || d.isBefore(first)) first = d;
-    }
-    if (first == null) return 1;
-    final week = (DateTime.now().difference(first).inDays / 7).floor() + 1;
-    return week < 1 ? 1 : week;
+  /// Opciones de un programa: activar, editar o eliminar.
+  void _openProgramOptions(TrainingProgram program) {
+    final c = ThemeColors.of(context);
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: c.card,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (sheetContext) {
+        Widget tile(
+          IconData icon,
+          String label,
+          VoidCallback onTap, {
+          Color? color,
+        }) {
+          return ListTile(
+            leading: Icon(icon, color: color ?? c.textPrimary),
+            title: Text(
+              label,
+              style: TextStyle(color: color ?? c.textPrimary, fontSize: 16),
+            ),
+            onTap: () {
+              Navigator.of(sheetContext).pop();
+              onTap();
+            },
+          );
+        }
+
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 8),
+              if (!program.isActive)
+                tile(
+                  Icons.play_circle_outline,
+                  'Activar programa',
+                  () => _activate(program),
+                ),
+              tile(
+                Icons.edit_outlined,
+                'Editar programa',
+                () => _openProgramEditor(program),
+              ),
+              tile(
+                Icons.delete_outline,
+                'Eliminar programa',
+                () => _deleteProgram(program),
+                color: AppColors.danger,
+              ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final c = ThemeColors.of(context);
     final ws = ref.watch(workoutProvider);
+    final active = ws.activeProgram;
+    final notices = ref.watch(notificationsProvider);
 
     // Siguiente entrenamiento: el primero no hecho esta semana.
     WorkoutPlan? next;
@@ -216,6 +301,7 @@ class _WorkoutsScreenState extends ConsumerState<WorkoutsScreen> {
         onRefresh: () async {
           await Future.wait([
             ref.read(workoutProvider.notifier).refresh(),
+            ref.read(notificationsProvider.notifier).refresh(),
             _loadTrainedDays(),
           ]);
         },
@@ -283,6 +369,14 @@ class _WorkoutsScreenState extends ConsumerState<WorkoutsScreen> {
               hasWorkout: _hasWorkoutOn,
               onSelect: (day) => setState(() => _selectedDay = day),
             ),
+            if (notices.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              CoachNoticeCard(
+                notices: notices,
+                onDismiss: () =>
+                    ref.read(notificationsProvider.notifier).markAllRead(),
+              ),
+            ],
             const SizedBox(height: 24),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -298,24 +392,27 @@ class _WorkoutsScreenState extends ConsumerState<WorkoutsScreen> {
                       ),
                     ),
                   ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 5,
-                    ),
-                    decoration: BoxDecoration(
-                      color: AppColors.secondaryCyan.withValues(alpha: 0.14),
-                      borderRadius: BorderRadius.circular(99),
-                    ),
-                    child: Text(
-                      'Semana ${_weekNumber()}',
-                      style: const TextStyle(
-                        color: AppColors.secondaryCyan,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
+                  if (active != null)
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 5,
+                      ),
+                      decoration: BoxDecoration(
+                        color: AppColors.secondaryCyan.withValues(alpha: 0.14),
+                        borderRadius: BorderRadius.circular(99),
+                      ),
+                      child: Text(
+                        active.isFinished
+                            ? 'Terminado'
+                            : 'Ciclo ${active.currentCycle ?? 1} de ${active.cycles}',
+                        style: const TextStyle(
+                          color: AppColors.secondaryCyan,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                     ),
-                  ),
                 ],
               ),
             ),
@@ -333,6 +430,22 @@ class _WorkoutsScreenState extends ConsumerState<WorkoutsScreen> {
             ] else if (ws.workouts.isNotEmpty && !ws.loading) ...[
               const SizedBox(height: 16),
               const _WeekCompleteBanner(),
+            ],
+            if (active != null && active.isFinished && !ws.loading) ...[
+              const SizedBox(height: 16),
+              _ProgramFinishedBanner(
+                cycles: active.cycles,
+                onExtend: () => _openProgramEditor(active),
+              ),
+            ],
+            if (!ws.loading && ws.error == null) ...[
+              const SizedBox(height: 24),
+              _MyPrograms(
+                programs: ws.otherPrograms,
+                onCreate: _openProgramEditor,
+                onActivate: _activate,
+                onOptions: _openProgramOptions,
+              ),
             ],
             const SizedBox(height: 24),
             const _PersonalRecordsCard(),
@@ -352,6 +465,7 @@ class _WorkoutsScreenState extends ConsumerState<WorkoutsScreen> {
             _MoreActions(
               onEmptyWorkout: _openFreeWorkout,
               onCreateWorkout: _openCreateWorkout,
+              onCreateProgram: _openProgramEditor,
               onHistory: _openHistory,
             ),
             // Zona inferior para no quedar oculto bajo el navbar ni el FAB.
@@ -375,15 +489,40 @@ class _WorkoutsScreenState extends ConsumerState<WorkoutsScreen> {
         onPrimary: () => ref.read(workoutProvider.notifier).refresh(),
       );
     }
+    final active = ws.activeProgram;
+    if (ws.programs.isEmpty && ws.workouts.isEmpty) {
+      return _ProgramMessage(
+        icon: Icons.fitness_center,
+        title: 'Aún no tienes un programa',
+        message:
+            'Un programa agrupa tus entrenamientos de la semana (por ejemplo '
+            '"Pecho y tríceps" y "Pierna"). Créalo desde cero y actívalo.',
+        primaryLabel: 'Crear programa',
+        onPrimary: _openProgramEditor,
+        secondaryLabel: 'Entrenar sin rutina',
+        onSecondary: _openFreeWorkout,
+      );
+    }
+    if (ws.programs.isNotEmpty && active == null) {
+      return _ProgramMessage(
+        icon: Icons.play_circle_outline,
+        title: 'No tienes un programa activo',
+        message:
+            'Activa uno de tus programas de abajo, o crea uno nuevo desde '
+            'cero.',
+        primaryLabel: 'Crear programa',
+        onPrimary: _openProgramEditor,
+        secondaryLabel: 'Entrenar sin rutina',
+        onSecondary: _openFreeWorkout,
+      );
+    }
     if (ws.workouts.isEmpty) {
       return _ProgramMessage(
         icon: Icons.fitness_center,
-        title: 'Aún no tienes entrenamientos',
-        message:
-            'Crea tu primer entrenamiento (por ejemplo "Pecho y tríceps") '
-            'y aparecerá aquí listo para empezar.',
-        primaryLabel: 'Crear entrenamiento',
-        onPrimary: _openCreateWorkout,
+        title: '«${ws.programName}» está vacío',
+        message: 'Agrégale entrenamientos para empezar a usarlo.',
+        primaryLabel: 'Agregar entrenamientos',
+        onPrimary: () => _openProgramEditor(active),
         secondaryLabel: 'Entrenar sin rutina',
         onSecondary: _openFreeWorkout,
       );
@@ -405,22 +544,16 @@ class _WorkoutsScreenState extends ConsumerState<WorkoutsScreen> {
         children: [
           InkWell(
             onTap: () => setState(() => _programExpanded = !_programExpanded),
-            onLongPress: () => _renameProgram(ws.programName),
+            onLongPress: active == null
+                ? null
+                : () => _openProgramOptions(active),
             child: Padding(
               padding: const EdgeInsets.all(16),
               child: Row(
                 children: [
-                  Container(
-                    width: 48,
-                    height: 48,
-                    decoration: BoxDecoration(
-                      color: AppColors.secondaryCyan,
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    child: const Icon(
-                      Icons.rocket_launch_rounded,
-                      color: AppColors.inkOnAccent,
-                    ),
+                  ProgramBadge(
+                    color: active?.color ?? 'cyan',
+                    icon: active?.icon ?? 'rocket',
                   ),
                   const SizedBox(width: 14),
                   Expanded(
@@ -447,18 +580,23 @@ class _WorkoutsScreenState extends ConsumerState<WorkoutsScreen> {
                             fontSize: 13,
                           ),
                         ),
+                        if (active != null && active.byCoach) ...[
+                          const SizedBox(height: 4),
+                          _CoachTag(name: active.coachName),
+                        ],
                       ],
                     ),
                   ),
-                  IconButton(
-                    tooltip: 'Renombrar programa',
-                    onPressed: () => _renameProgram(ws.programName),
-                    icon: Icon(
-                      Icons.edit_outlined,
-                      size: 18,
-                      color: c.textSecondary,
+                  if (active != null)
+                    IconButton(
+                      tooltip: 'Editar programa',
+                      onPressed: () => _openProgramEditor(active),
+                      icon: Icon(
+                        Icons.edit_outlined,
+                        size: 18,
+                        color: c.textSecondary,
+                      ),
                     ),
-                  ),
                   AnimatedRotation(
                     turns: _programExpanded ? 0.5 : 0,
                     duration: const Duration(milliseconds: 200),
@@ -482,7 +620,7 @@ class _WorkoutsScreenState extends ConsumerState<WorkoutsScreen> {
                     ? 0
                     : doneCount / ws.workouts.length,
                 backgroundColor: c.input,
-                color: AppColors.secondaryCyan,
+                color: programColor(active?.color ?? 'cyan'),
               ),
             ),
           ),
@@ -1183,11 +1321,13 @@ class _MoreActions extends StatelessWidget {
   const _MoreActions({
     required this.onEmptyWorkout,
     required this.onCreateWorkout,
+    required this.onCreateProgram,
     required this.onHistory,
   });
 
   final VoidCallback onEmptyWorkout;
   final VoidCallback onCreateWorkout;
+  final VoidCallback onCreateProgram;
   final VoidCallback onHistory;
 
   @override
@@ -1227,8 +1367,15 @@ class _MoreActions extends StatelessWidget {
             tile(
               Icons.add_box_outlined,
               'Crear entrenamiento',
-              'Arma una rutina para tu programa',
+              'Agrega una rutina a tu programa activo',
               onCreateWorkout,
+            ),
+            Divider(height: 1, color: c.input),
+            tile(
+              Icons.rocket_launch_outlined,
+              'Crear programa',
+              'Arma un plan nuevo desde cero y elige cuántos ciclos dura',
+              onCreateProgram,
             ),
             Divider(height: 1, color: c.input),
             tile(
@@ -1248,10 +1395,12 @@ class _AddSheet extends StatelessWidget {
   const _AddSheet({
     required this.onStartEmptyWorkout,
     required this.onCreateWorkout,
+    required this.onCreateProgram,
   });
 
   final VoidCallback onStartEmptyWorkout;
   final VoidCallback onCreateWorkout;
+  final VoidCallback onCreateProgram;
 
   @override
   Widget build(BuildContext context) {
@@ -1298,9 +1447,220 @@ class _AddSheet extends StatelessWidget {
               ),
               onTap: onCreateWorkout,
             ),
+            ListTile(
+              leading: Icon(Icons.rocket_launch_outlined, color: c.textPrimary),
+              title: Text(
+                'Crear programa',
+                style: TextStyle(color: c.textPrimary, fontSize: 16),
+              ),
+              onTap: onCreateProgram,
+            ),
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Etiqueta morada (color del coach): el programa viene del entrenador.
+class _CoachTag extends StatelessWidget {
+  const _CoachTag({this.name});
+
+  final String? name;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Icon(Icons.sports, size: 14, color: AppColors.tertiaryPurple),
+        const SizedBox(width: 4),
+        Flexible(
+          child: Text(
+            name == null ? 'De tu entrenador' : 'De $name',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: AppColors.tertiaryPurple,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// El programa activo ya pasó todos sus ciclos.
+class _ProgramFinishedBanner extends StatelessWidget {
+  const _ProgramFinishedBanner({required this.cycles, required this.onExtend});
+
+  final int cycles;
+  final VoidCallback onExtend;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = ThemeColors.of(context);
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.fromLTRB(16, 14, 8, 14),
+      decoration: BoxDecoration(
+        color: c.card,
+        borderRadius: BorderRadius.circular(AppColors.radiusCard),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.flag_outlined, color: AppColors.successGreen),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              'Completaste los $cycles '
+              '${cycles == 1 ? 'ciclo' : 'ciclos'} de este programa. '
+              'Puedes alargarlo o activar otro.',
+              style: TextStyle(color: c.textPrimary, fontSize: 13),
+            ),
+          ),
+          TextButton(onPressed: onExtend, child: const Text('Alargar')),
+        ],
+      ),
+    );
+  }
+}
+
+/// Programas guardados que no están activos, y el acceso para crear otro.
+class _MyPrograms extends StatelessWidget {
+  const _MyPrograms({
+    required this.programs,
+    required this.onCreate,
+    required this.onActivate,
+    required this.onOptions,
+  });
+
+  final List<TrainingProgram> programs;
+  final VoidCallback onCreate;
+  final ValueChanged<TrainingProgram> onActivate;
+  final ValueChanged<TrainingProgram> onOptions;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = ThemeColors.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 8, 0),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Mis programas',
+                  style: TextStyle(
+                    color: c.textPrimary,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+              TextButton.icon(
+                onPressed: onCreate,
+                icon: const Icon(Icons.add, size: 18),
+                label: const Text('Nuevo'),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 4),
+        if (programs.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Text(
+              'Aquí aparecen tus otros programas guardados. Crea uno nuevo '
+              'y actívalo cuando quieras cambiar de plan.',
+              style: TextStyle(color: c.textSecondary, fontSize: 13),
+            ),
+          )
+        else
+          Container(
+            margin: const EdgeInsets.symmetric(horizontal: 16),
+            child: Material(
+              color: c.card,
+              borderRadius: BorderRadius.circular(AppColors.radiusCard),
+              clipBehavior: Clip.antiAlias,
+              child: Column(
+                children: [
+                  for (var i = 0; i < programs.length; i++) ...[
+                    if (i > 0) Divider(height: 1, color: c.input),
+                    InkWell(
+                      onTap: () => onOptions(programs[i]),
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
+                        child: Row(
+                          children: [
+                            ProgramBadge(
+                              color: programs[i].color,
+                              icon: programs[i].icon,
+                              size: 40,
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    programs[i].name,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      color: c.textPrimary,
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    '${programs[i].workouts.length} '
+                                    '${programs[i].workouts.length == 1 ? 'entrenamiento' : 'entrenamientos'}'
+                                    ' · ${programs[i].cycles} '
+                                    '${programs[i].cycles == 1 ? 'ciclo' : 'ciclos'}',
+                                    style: TextStyle(
+                                      color: c.textSecondary,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                  if (programs[i].byCoach) ...[
+                                    const SizedBox(height: 3),
+                                    _CoachTag(name: programs[i].coachName),
+                                  ],
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            OutlinedButton(
+                              onPressed: () => onActivate(programs[i]),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: AppColors.secondaryCyan,
+                                side: const BorderSide(
+                                  color: AppColors.secondaryCyan,
+                                ),
+                                minimumSize: const Size(0, 40),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 14,
+                                ),
+                              ),
+                              child: const Text('Activar'),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+      ],
     );
   }
 }

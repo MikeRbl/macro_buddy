@@ -29,6 +29,15 @@ const userWorkoutSchema = new mongoose.Schema(
       ref: "Workout",
       index: true,
     },
+    // Copia del contexto al guardar la sesión: permite comparar el progreso
+    // por programa y por ciclo aunque después se edite o borre el programa.
+    program_id: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Program",
+      index: true,
+    },
+    cycle: { type: Number },
+    workout_name: { type: String },
     date: { type: Date, default: Date.now, index: true },
     duration: { type: Number },
     note: { type: String },
