@@ -45,6 +45,11 @@ dependencies:
   pedometer: ^4.1.1
   permission_handler: ^12.0.1
   google_fonts: ^6.3.3
+  flutter_tts: ^4.2.5
+  just_audio: ^0.10.6
+  audio_service: ^0.18.19
+  app_settings: ^9.0.1
+  audio_session: ^0.2.4
 
 dev_dependencies:
   flutter_test:
@@ -86,6 +91,10 @@ flutter:
   #   - images/a_dot_ham.jpeg
   assets:
     - Assets/
+    # Silencio en bucle que mantiene la sesión multimedia del entrenador.
+    - Assets/audio/
+    # Clips de voz del entrenador (ver Assets/voces/README.md).
+    - Assets/voces/
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

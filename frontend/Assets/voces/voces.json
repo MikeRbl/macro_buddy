@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "_ayuda": "Ver README.md. Los clips se detectan solos por nombre de archivo (num_10.mp3 = clave num_10). Aquí solo van traducciones de ejercicios, archivos con otro nombre y ánimos extra.",
+
+  "clips": {},
+
+  "ejercicios": {
+    "push_up": { "clave": "ej_lagartijas", "texto": "lagartijas" },
+    "push_up_wide_hands": { "clave": "ej_lagartijas_abiertas", "texto": "lagartijas abiertas" },
+    "diamond_push_up": { "clave": "ej_lagartijas_diamante", "texto": "lagartijas diamante" },
+    "squat": { "clave": "ej_sentadillas", "texto": "sentadillas" },
+    "bodyweight_squat": { "clave": "ej_sentadillas", "texto": "sentadillas" },
+    "jump_squat": { "clave": "ej_sentadillas_con_salto", "texto": "sentadillas con salto" },
+    "lunge": { "clave": "ej_zancadas", "texto": "zancadas" },
+    "walking_lunge": { "clave": "ej_zancadas", "texto": "zancadas" },
+    "burpee": { "clave": "ej_burpees", "texto": "burpees" },
+    "jumping_jack": { "clave": "ej_saltos_de_tijera", "texto": "saltos de tijera" },
+    "mountain_climber": { "clave": "ej_escaladores", "texto": "escaladores" },
+    "crunch_floor": { "clave": "ej_abdominales", "texto": "abdominales" },
+    "crunch": { "clave": "ej_abdominales", "texto": "abdominales" },
+    "front_plank": { "clave": "ej_plancha", "texto": "plancha" },
+    "plank": { "clave": "ej_plancha", "texto": "plancha" },
+    "glute_bridge": { "clave": "ej_puente_de_gluteo", "texto": "puente de glúteo" },
+    "pull_up": { "clave": "ej_dominadas", "texto": "dominadas" },
+    "pull_up_neutral_grip": { "clave": "ej_dominadas_neutras", "texto": "dominadas con agarre neutro" },
+    "bench_dip_knees_bent": { "clave": "ej_fondos_en_banco", "texto": "fondos en banco" },
+    "triceps_dip": { "clave": "ej_fondos", "texto": "fondos" },
+    "dumbbell_single_leg_split_squat": { "clave": "ej_sentadilla_bulgara", "texto": "sentadilla búlgara" },
+    "dumbbell_lateral_raise": { "clave": "ej_elevaciones_laterales", "texto": "elevaciones laterales" },
+    "dumbbell_seated_shoulder_press": { "clave": "ej_press_de_hombro", "texto": "press de hombro" },
+    "dumbbell_seated_curl": { "clave": "ej_curl_de_biceps", "texto": "curl de bíceps" },
+    "dumbbell_stiff_leg_deadlift": { "clave": "ej_peso_muerto_piernas_rigidas", "texto": "peso muerto con piernas rígidas" },
+    "barbell_romanian_deadlift": { "clave": "ej_peso_muerto_rumano", "texto": "peso muerto rumano" },
+    "assisted_hanging_knee_raise": { "clave": "ej_elevacion_de_rodillas", "texto": "elevación de rodillas" }
+  },
+
+  "animos": []
+}
