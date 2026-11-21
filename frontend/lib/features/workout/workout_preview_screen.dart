@@ -6,6 +6,8 @@ import '../../core/widgets/exercise_thumbnail.dart';
 import '../../theme/app_theme.dart';
 import '../auth/auth_controller.dart';
 import '../create_program/add_exercises_sheet.dart';
+import '../voice_coach/guided_workout_screen.dart';
+import '../voice_coach/speaker_setup_screen.dart';
 import 'active_workout_screen.dart';
 import 'workout_models.dart';
 
@@ -181,6 +183,26 @@ class _WorkoutPreviewScreenState extends ConsumerState<WorkoutPreviewScreen> {
     );
   }
 
+  void _startVoiceWorkout() {
+    if (_exercises.isEmpty) return;
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => GuidedWorkoutScreen(
+          exercises: _exercises,
+          workoutName: widget.title,
+        ),
+      ),
+    );
+  }
+
+  void _openSpeaker() {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => SpeakerSetupScreen(exercises: _exercises),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final c = ThemeColors.of(context);
@@ -191,6 +213,13 @@ class _WorkoutPreviewScreenState extends ConsumerState<WorkoutPreviewScreen> {
           widget.title,
           style: TextStyle(color: c.textPrimary, fontWeight: FontWeight.bold),
         ),
+        actions: [
+          IconButton(
+            tooltip: 'Bocina MacroBuddy',
+            onPressed: _openSpeaker,
+            icon: Icon(Icons.speaker, color: c.textPrimary),
+          ),
+        ],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
@@ -320,9 +349,21 @@ class _WorkoutPreviewScreenState extends ConsumerState<WorkoutPreviewScreen> {
         child: Container(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
           color: c.scaffold,
-          child: ElevatedButton(
-            onPressed: _startWorkout,
-            child: const Text('Iniciar entrenamiento'),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              ElevatedButton(
+                onPressed: _startWorkout,
+                child: const Text('Iniciar entrenamiento'),
+              ),
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                onPressed: _exercises.isEmpty ? null : _startVoiceWorkout,
+                icon: const Icon(Icons.record_voice_over),
+                label: const Text('Entrenar con voz (bocina)'),
+              ),
+            ],
           ),
         ),
       ),

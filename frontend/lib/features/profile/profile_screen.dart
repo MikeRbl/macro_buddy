@@ -9,6 +9,7 @@ import '../../theme/app_theme.dart';
 import '../auth/auth_controller.dart';
 import '../dashboard/dashboard_provider.dart';
 import '../navigation/shortcuts_sheet.dart';
+import '../voice_coach/speaker_setup_screen.dart';
 import 'edit_profile_screen.dart';
 
 /// Tab de Perfil: atleta, vínculo con el entrenador y configuración.
@@ -236,6 +237,23 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                         color: c.textSecondary,
                       ),
                       onTap: _openShortcuts,
+                    ),
+                    Divider(height: 1, color: c.input),
+                    ListTile(
+                      leading: Icon(Icons.speaker, color: c.textPrimary),
+                      title: Text(
+                        'Bocina MacroBuddy',
+                        style: TextStyle(color: c.textPrimary, fontSize: 16),
+                      ),
+                      trailing: Icon(
+                        Icons.chevron_right,
+                        color: c.textSecondary,
+                      ),
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => const SpeakerSetupScreen(),
+                        ),
+                      ),
                     ),
                   ],
                 ),
